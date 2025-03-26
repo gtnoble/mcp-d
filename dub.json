@@ -1,0 +1,20 @@
+{
+    "name": "d-mcp-server",
+    "description": "Model Context Protocol server implementation in D",
+    "authors": ["Garret Noble"],
+    "copyright": "Copyright © 2025",
+    "license": "MIT",
+    "targetType": "library",
+    "configurations": [
+        {
+            "name": "library",
+            "targetType": "library"
+        },
+        {
+            "name": "example",
+            "targetType": "executable",
+            "sourceFiles": ["source/app.d"],
+            "mainSourceFile": "source/app.d"
+        }
+    ]
+}
