@@ -1,7 +1,5 @@
 import std.stdio;
 import std.conv : to;
-import std.file : readText;
-import std.path : buildPath;
 import std.json;
 
 import mcp.server;
@@ -61,17 +59,6 @@ void main() {
         }
     );
     
-    // Add a dynamic documentation resource
-    server.addDynamicResource(
-        "docs://",                    // Base URI
-        "Documentation",              // Name
-        "Access documentation files", // Description
-        (string path) {
-            auto fullPath = buildPath("docs", path);
-            return ResourceContents.fromFile(fullPath);
-        }
-    );
-    
     // Add a static text resource with change notification
     auto notifyGreetingChanged = server.addResource(
         "memory://greeting",
@@ -84,6 +71,5 @@ void main() {
     );
     
     // Start the server
-    writeln("Starting MCP server...");
     server.start();
 }

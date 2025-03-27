@@ -225,30 +225,30 @@ unittest {
     
     // Valid cases
     objSchema.validate(JSONValue([
-        "name": "John",
-        "age": 30
+        "name": JSONValue("John"),
+        "age": JSONValue(30)
     ])); // Should pass
     
     objSchema.validate(JSONValue([
-        "name": "John",
-        "age": 30,
-        "tags": ["a", "b"]
+        "name": JSONValue("John"),
+        "age": JSONValue(30),
+        "tags": JSONValue(["a", "b"])
     ])); // Should pass with optional field
     
     // Invalid cases
     assertThrown!SchemaValidationError(objSchema.validate(JSONValue([
-        "name": "John"
+        "name": JSONValue("John")
     ]))); // Missing required field
     
     assertThrown!SchemaValidationError(objSchema.validate(JSONValue([
-        "name": "John",
-        "age": "30" // Wrong type for age
+        "name": JSONValue("John"),
+        "age": JSONValue("30") // Wrong type for age
     ])));
     
     assertThrown!SchemaValidationError(objSchema.validate(JSONValue([
-        "name": "John",
-        "age": 30,
-        "extra": "field" // Additional field not allowed
+        "name": JSONValue("John"),
+        "age": JSONValue(30),
+        "extra": JSONValue("field") // Additional field not allowed
     ])));
 }
 

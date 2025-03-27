@@ -14,7 +14,7 @@ unittest {
     auto registry = new ToolRegistry();
     auto schema = SchemaBuilder.object()
         .addProperty("name", SchemaBuilder.string_());
-    auto handler = (JSONValue args) { return JSONValue("ok"); };
+    auto handler = delegate(JSONValue args) { return JSONValue("ok"); };
 
     // Test valid registration
     registry.addTool("test", "A test tool", schema, handler);
@@ -52,7 +52,7 @@ unittest {
         .addProperty("age", SchemaBuilder.integer().range(0, 150))
         .addProperty("tags", SchemaBuilder.array(SchemaBuilder.string_()).optional());
     
-    auto handler = (JSONValue args) {
+    auto handler = delegate(JSONValue args) {
         auto name = args["name"].str;
         auto age = args["age"].integer;
         return JSONValue([
@@ -64,8 +64,8 @@ unittest {
     
     // Test valid input
     auto validInput = JSONValue([
-        "name": "John",
-        "age": 30
+        "name": JSONValue("John"),
+        "age": JSONValue(30)
     ]);
     auto result = tool.execute(validInput);
     assert(result.type == JSONType.object);
@@ -74,8 +74,8 @@ unittest {
     
     // Test invalid type
     auto invalidType = JSONValue([
-        "name": "John",
-        "age": "30" // Wrong type for age
+        "name": JSONValue("John"),
+        "age": JSONValue("30") // Wrong type for age
     ]);
     auto typeError = tool.execute(invalidType);
     assert(typeError["isError"].boolean == true);
@@ -83,7 +83,7 @@ unittest {
     
     // Test missing required field
     auto missingField = JSONValue([
-        "name": "John"
+        "name": JSONValue("John")
     ]);
     auto missingError = tool.execute(missingField);
     assert(missingError["isError"].boolean == true);
@@ -91,9 +91,9 @@ unittest {
     
     // Test invalid extra field
     auto extraField = JSONValue([
-        "name": "John",
-        "age": 30,
-        "extra": "field"
+        "name": JSONValue("John"),
+        "age": JSONValue(30),
+        "extra": JSONValue("field")
     ]);
     auto extraError = tool.execute(extraField);
     assert(extraError["isError"].boolean == true);

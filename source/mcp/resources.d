@@ -3,8 +3,6 @@ module mcp.resources;
 import std.json;
 import std.algorithm : sort, startsWith;
 import std.base64;
-import std.path;
-import std.file;
 
 import mcp.mime;
 import mcp.protocol : MCPError, ErrorCode;
@@ -23,6 +21,7 @@ struct ResourceContents {
     string mimeType;     // Content MIME type
     string textContent;  // Text content (if text)
     ubyte[] blob;       // Binary content (if binary)
+    private string _uri; // Resource URI (set by registry)
     
     /// Create text resource
     static ResourceContents makeText(string mimeType, string content) {
@@ -34,32 +33,23 @@ struct ResourceContents {
         return ResourceContents(mimeType, null, content);
     }
     
-    /// Create from file
-    static ResourceContents fromFile(string path) {
-        auto mimeType = guessMimeType(path);
-        
-        if (isTextMimeType(mimeType)) {
-            return makeText(mimeType, readText(path));
-        } else {
-            return makeBinary(mimeType, cast(ubyte[])read(path));
-        }
-    }
+    /// Set URI (used by registry)
+    void setURI(string uri) { _uri = uri; }
     
     /// Convert to MCP format
     JSONValue toJSON() const {
+        auto json = JSONValue([
+            "uri": _uri,
+            "mimeType": mimeType
+        ]);
+        
         if (blob !is null) {
-            return JSONValue([
-                "type": "blob",
-                "mimeType": mimeType,
-                "blob": Base64.encode(blob)
-            ]);
+            json["blob"] = Base64.encode(blob);
         } else {
-            return JSONValue([
-                "type": "text",
-                "mimeType": mimeType,
-                "text": textContent
-            ]);
+            json["text"] = textContent;
         }
+        
+        return json;
     }
 }
 
@@ -159,11 +149,15 @@ class ResourceRegistry {
                 if (uri.startsWith(entry.uri)) {
                     // Extract path after base URI
                     auto path = uri[entry.uri.length .. $];
-                    return entry.dynamicReader(path);
+                    auto contents = entry.dynamicReader(path);
+                    contents.setURI(uri);
+                    return contents;
                 }
             } else {
                 if (uri == entry.uri) {
-                    return entry.staticReader();
+                    auto contents = entry.staticReader();
+                    contents.setURI(uri);
+                    return contents;
                 }
             }
         }
@@ -186,17 +180,4 @@ class ResourceRegistry {
                 .array
         ]);
     }
-}
-
-/// Helper function to create a file system resource reader
-DynamicResourceReader createFileReader(string basePath) {
-    return (string path) {
-        auto fullPath = buildPath(basePath, path);
-        
-        if (!exists(fullPath)) {
-            throw new ResourceNotFoundException(path);
-        }
-        
-        return ResourceContents.fromFile(fullPath);
-    };
 }
