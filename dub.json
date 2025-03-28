@@ -1,6 +1,6 @@
 {
-    "name": "d-mcp-server",
-    "description": "Model Context Protocol server implementation in D",
+    "name": "mcp",
+    "description": "Model Context Protocol implementation in D",
     "authors": ["Garret Noble"],
     "copyright": "Copyright © 2025",
     "license": "MIT",

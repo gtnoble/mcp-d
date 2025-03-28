@@ -51,47 +51,63 @@ unittest {
 
 unittest {
     // Test content types toJSON
-    auto text = TextContent("text", "Hello world");
+    auto text = TextContent("Hello world");
     auto textJson = text.toJSON();
     assert(textJson["type"] == JSONValue("text"));
     assert(textJson["text"] == JSONValue("Hello world"));
 
-    auto image = ImageContent("image", "base64data", "image/png");
+    auto image = ImageContent("base64data", "image/png");
     auto imageJson = image.toJSON();
     assert(imageJson["type"] == JSONValue("image"));
     assert(imageJson["data"] == JSONValue("base64data"));
     assert(imageJson["mimeType"] == JSONValue("image/png"));
 
-    auto message = PromptMessage("user", textJson);
-    auto messageJson = message.toJSON();
-    assert(messageJson["role"] == JSONValue("user"));
-    assert(messageJson["content"] == textJson);
+    auto resource = ResourceContent("resource://test", "text/plain", "content");
+    auto resourceJson = resource.toJSON();
+    assert(resourceJson["type"] == JSONValue("resource"));
+    assert(resourceJson["resource"]["uri"] == JSONValue("resource://test"));
+    assert(resourceJson["resource"]["mimeType"] == JSONValue("text/plain"));
+    assert(resourceJson["resource"]["text"] == JSONValue("content"));
+}
+
+unittest {
+    // Test PromptMessage helper constructors
+    auto textMsg = PromptMessage.text("user", "Hello world");
+    assert(textMsg.role == "user");
+    assert(textMsg.type == PromptMessage.MessageType.text);
+    assert(textMsg.textContent.content == "Hello world");
+
+    auto imageMsg = PromptMessage.image("assistant", "base64data", "image/png");
+    assert(imageMsg.role == "assistant");
+    assert(imageMsg.type == PromptMessage.MessageType.image);
+    assert(imageMsg.imageContent.data == "base64data");
+    assert(imageMsg.imageContent.mimeType == "image/png");
+
+    auto resourceMsg = PromptMessage.resource(
+        "assistant", "resource://test", "text/plain", "content"
+    );
+    assert(resourceMsg.role == "assistant");
+    assert(resourceMsg.type == PromptMessage.MessageType.resource);
+    assert(resourceMsg.resourceContent.uri == "resource://test");
+    assert(resourceMsg.resourceContent.mimeType == "text/plain");
+    assert(resourceMsg.resourceContent.content == "content");
 }
 
 // Test PromptRegistry
 unittest {
     // Set up test prompt
     auto prompt = Prompt(
-        "test",
+        "test1",
         "Test prompt",
         [PromptArgument("name", "User name", true)]
     );
 
     // Test handler that validates arguments and returns messages
-    auto handler = delegate(string name, JSONValue args) {
-        auto userName = args["arguments"]["name"].str;
-        return JSONValue([
-            "description": JSONValue("Test response"),
-            "messages": JSONValue([
-                JSONValue([
-                    "role": JSONValue("user"),
-                    "content": JSONValue([
-                        "type": JSONValue("text"),
-                        "text": JSONValue("Hello " ~ userName)
-                    ])
-                ])
-            ])
-        ]);
+    auto handler = delegate(string name, string[string] args) {
+        return PromptResponse(
+            "Test response",
+            [PromptMessage.text("user", "Hello " ~ args["name"])]
+        );
     };
 
     // Create registry
@@ -110,7 +126,7 @@ unittest {
     auto listing = registry.listPrompts();
     assert("prompts" in listing);
     assert(listing["prompts"].array.length == 1);
-    assert(listing["prompts"][0]["name"] == JSONValue("test"));
+    assert(listing["prompts"][0]["name"] == JSONValue("test1"));
 
     // Test getting prompt content
     auto args = JSONValue([
@@ -118,51 +134,56 @@ unittest {
             "name": JSONValue("Alice")
         ])
     ]);
-    auto content = registry.getPromptContent("test", args);
+    auto content = registry.getPromptContent("test1", args);
     assert("description" in content);
     assert("messages" in content);
     assert(content["messages"][0]["role"] == JSONValue("user"));
-    assert(content["messages"][0]["content"]["text"] == JSONValue("Hello Alice"));
+    auto messages = content["messages"].array;
+    assert(messages[0]["content"]["text"] == JSONValue("Hello Alice"));
+}
 
-    // Test missing required argument
+unittest {
+    // Test error cases
+    auto registry = new PromptRegistry(null);
+    auto prompt = Prompt("test2");
+    
+    // Test empty prompt name
+    auto badPrompt = Prompt("", "Bad prompt");
     assertThrown!MCPError(
-        registry.getPromptContent("test", JSONValue(null))
+        registry.addPrompt(badPrompt, (n, a) => PromptResponse())
+    );
+
+    // Test missing required arguments
+    registry.addPrompt(
+        Prompt("test5", "Test", [PromptArgument("arg", "", true)]),
+        (n, a) => PromptResponse()
+    );
+    assertThrown!MCPError(
+        registry.getPromptContent("test5", JSONValue(null))
     );
 
     // Test unknown prompt
     assertThrown!MCPError(
-        registry.getPromptContent("unknown", args)
+        registry.getPromptContent("unknown", JSONValue.emptyObject)
     );
 
-    // Test invalid handler response (missing messages)
-    auto badHandler = delegate(string name, JSONValue args) {
-        return JSONValue([
-            "description": "Bad response"
-        ]);
-    };
-    auto badPrompt = Prompt("bad", "Bad prompt");
-    registry.addPrompt(badPrompt, badHandler);
+    // Test empty response
+    registry.addPrompt(
+        Prompt("test3"),
+        (n, a) => PromptResponse()  // Empty response
+    );
     assertThrown!MCPError(
-        registry.getPromptContent("bad", JSONValue(null))
+        registry.getPromptContent("test3", JSONValue.emptyObject)
     );
 
-    // Test invalid handler response (invalid role)
-    auto badRoleHandler = delegate(string name, JSONValue args) {
-        return JSONValue([
-            "messages": JSONValue([
-                JSONValue([
-                    "role": JSONValue("invalid"),
-                    "content": JSONValue([
-                        "type": JSONValue("text"),
-                        "text": JSONValue("Hello")
-                    ])
-                ])
-            ])
-        ]);
-    };
-    auto badRolePrompt = Prompt("bad_role", "Bad role prompt");
-    registry.addPrompt(badRolePrompt, badRoleHandler);
+    // Test invalid role
+    registry.addPrompt(
+        Prompt("test4"),
+        (n, a) => PromptResponse("", [
+            PromptMessage.text("invalid", "Hello")
+        ])
+    );
     assertThrown!MCPError(
-        registry.getPromptContent("bad_role", JSONValue(null))
+        registry.getPromptContent("test4", JSONValue.emptyObject)
     );
 }

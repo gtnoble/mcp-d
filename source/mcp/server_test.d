@@ -282,25 +282,16 @@ unittest {
     auto transport = new MockTransport();
     auto server = new MCPServer(transport, "Test Server", "1.0.0");
 
-    // Add test prompt
-    server.addPrompt(
-        "greet",
-        "Greeting prompt",
-        [PromptArgument("name", "User's name", true)],
-        (string name, JSONValue args) {
-            auto userName = args["arguments"]["name"].str;
-            return JSONValue([
-                "description": JSONValue("Test response"),
-                "messages": JSONValue([
-                    JSONValue([
-                        "role": JSONValue("user"),
-                        "content": JSONValue([
-                            "type": JSONValue("text"),
-                            "text": JSONValue("Hello " ~ userName)
-                        ])
-                    ])
-                ])
-            ]);
+        // Add test prompt
+        server.addPrompt(
+            "greet",
+            "Greeting prompt",
+            [PromptArgument("name", "User's name", true)],
+            (string name, string[string] args) {
+                return PromptResponse(
+                    "Test response",
+                    [PromptMessage.text("user", "Hello " ~ args["name"])]
+                );
         }
     );
 

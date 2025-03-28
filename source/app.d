@@ -1,12 +1,12 @@
 import std.stdio;
 import std.conv : to;
 import std.json;
+import std.base64;
 
 import mcp.server;
 import mcp.schema;
 import mcp.resources : ResourceContents;
 import mcp.prompts;
-import std.base64;
 
 version(unittest) {} else
 void main() {
@@ -58,25 +58,14 @@ void main() {
             PromptArgument("name", "User's name", true),
             PromptArgument("language", "Language code (en/es)", false)
         ],
-        (string name, JSONValue args) {
-            auto userName = args["arguments"]["name"].str;
-            auto lang = "language" in args["arguments"] ? 
-                args["arguments"]["language"].str : "en";
+        (string name, string[string] args) {
+            string greeting = "language" in args && args["language"] == "es" ?
+                "¡Hola" : "Hello";
             
-            string greeting = lang == "es" ? "¡Hola" : "Hello";
-            
-            return JSONValue([
-                "description": JSONValue("Greeting response"),
-                "messages": JSONValue([
-                    JSONValue([
-                        "role": JSONValue("assistant"),
-                        "content": JSONValue([
-                            "type": JSONValue("text"),
-                            "text": JSONValue(greeting ~ " " ~ userName ~ "!")
-                        ])
-                    ])
-                ])
-            ]);
+            return PromptResponse(
+                "Greeting response",
+                [PromptMessage.text("assistant", greeting ~ " " ~ args["name"] ~ "!")]
+            );
         }
     );
     
@@ -88,34 +77,25 @@ void main() {
             PromptArgument("username", "Username to display", true),
             PromptArgument("role", "User role (admin/user)", true)
         ],
-        (string name, JSONValue args) {
-            // Extract arguments
-            auto username = args["arguments"]["username"].str;
-            auto role = args["arguments"]["role"].str;
-            
+        (string name, string[string] args) {
             // Example base64 encoded 1x1 pixel PNG
             auto imageData = 
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==";
             
-            return JSONValue([
-                "messages": JSONValue([
-                    JSONValue([
-                        "role": JSONValue("assistant"),
-                        "content": JSONValue([
-                            "type": JSONValue("text"),
-                            "text": JSONValue("User Badge for " ~ username ~ " (" ~ role ~ ")")
-                        ])
-                    ]),
-                    JSONValue([
-                        "role": JSONValue("assistant"),
-                        "content": JSONValue([
-                            "type": JSONValue("image"),
-                            "data": JSONValue(imageData),
-                            "mimeType": JSONValue("image/png")
-                        ])
-                    ])
-                ])
-            ]);
+            return PromptResponse(
+                "User badge for " ~ args["username"],
+                [
+                    PromptMessage.text(
+                        "assistant",
+                        "User Badge for " ~ args["username"] ~ " (" ~ args["role"] ~ ")"
+                    ),
+                    PromptMessage.image(
+                        "assistant",
+                        imageData,
+                        "image/png"
+                    )
+                ]
+            );
         }
     );
     
@@ -124,29 +104,23 @@ void main() {
         "system_info",
         "Show system information",
         [],  // No arguments needed
-        (string name, JSONValue args) {
-            return JSONValue([
-                "messages": JSONValue([
-                    JSONValue([
-                        "role": JSONValue("assistant"),
-                        "content": JSONValue([
-                            "type": JSONValue("text"),
-                            "text": JSONValue("Here's the current system information:")
-                        ])
-                    ]),
-                    JSONValue([
-                        "role": JSONValue("assistant"),
-                        "content": JSONValue([
-                            "type": JSONValue("resource"),
-                            "resource": JSONValue([
-                                "uri": JSONValue("config://version"),
-                                "mimeType": JSONValue("application/json"),
-                                "text": JSONValue(`{"version": "0.1.0", "built": "2025-03-26"}`)
-                            ])
-                        ])
-                    ])
-                ])
-            ]);
+        (string name, string[string] args) {
+            return PromptResponse(
+                "System information",
+                [
+                    PromptMessage.text(
+                        "assistant",
+                        "Here's the current system information:"
+                    ),
+                    // Pass content directly to match the resource message format
+                    PromptMessage.resource(
+                        "assistant",
+                        "config://version",
+                        "application/json",
+                        `{"version": "0.1.0", "built": "2025-03-26"}`
+                    )
+                ]
+            );
         }
     );
     

@@ -39,7 +39,7 @@ struct Prompt {
             json["description"] = description;
         }
         if (arguments.length > 0) {
-            json["arguments"] = arguments.map!(a => a.toJSON()).array();
+            json["arguments"] = arguments.map!(a => a.toJSON()).array;
         }
         return json;
     }
@@ -47,46 +47,124 @@ struct Prompt {
 
 /// Message content types
 struct TextContent {
-    string type = "text";
-    string text;
-    
+    string content;
+
     JSONValue toJSON() const {
         return JSONValue([
-            "type": JSONValue(type),
-            "text": JSONValue(text)
+            "type": JSONValue("text"),
+            "text": JSONValue(content)
         ]);
     }
 }
 
 struct ImageContent {
-    string type = "image";
-    string data;     // base64-encoded
+    string data;      // base64-encoded
     string mimeType;
     
     JSONValue toJSON() const {
         return JSONValue([
-            "type": JSONValue(type),
+            "type": JSONValue("image"),
             "data": JSONValue(data),
             "mimeType": JSONValue(mimeType)
         ]);
     }
 }
 
-struct PromptMessage {
-    string role;      // "user" or "assistant"
-    JSONValue content;  // TextContent | ImageContent | EmbeddedResource
-    
+struct ResourceContent {
+    string uri;
+    string mimeType;
+    string content;  // The actual text content
+
     JSONValue toJSON() const {
-        JSONValue jsonContent = content;
+        auto resourceContent = JSONValue([
+            "uri": JSONValue(uri),
+            "mimeType": JSONValue(mimeType),
+            "text": JSONValue(content)  // Always include text field as per spec
+        ]);
+
+        return JSONValue([
+            "type": JSONValue("resource"),
+            "resource": resourceContent
+        ]);
+    }
+}
+
+/// Message definition with union content
+struct PromptMessage {
+    string role;  // "user" or "assistant"
+    union {
+        TextContent textContent;
+        ImageContent imageContent;
+        ResourceContent resourceContent;
+    }
+    MessageType type;
+
+    enum MessageType {
+        text,
+        image,
+        resource
+    }
+
+    JSONValue toJSON() const {
+        JSONValue content;
+        final switch (type) {
+            case MessageType.text:
+                content = textContent.toJSON();
+                break;
+            case MessageType.image:
+                content = imageContent.toJSON();
+                break;
+            case MessageType.resource:
+                content = resourceContent.toJSON();
+                break;
+        }
         return JSONValue([
             "role": JSONValue(role),
-            "content": jsonContent
+            "content": content
+        ]);
+    }
+
+    // Helper constructors
+    static PromptMessage text(string role, string content) {
+        PromptMessage msg;
+        msg.role = role;
+        msg.textContent = TextContent(content);
+        msg.type = MessageType.text;
+        return msg;
+    }
+
+    static PromptMessage image(string role, string data, string mimeType) {
+        PromptMessage msg;
+        msg.role = role;
+        msg.imageContent = ImageContent(data, mimeType);
+        msg.type = MessageType.image;
+        return msg;
+    }
+
+    static PromptMessage resource(string role, string uri, string mimeType, string content = "") {
+        PromptMessage msg;
+        msg.role = role;
+        msg.resourceContent = ResourceContent(uri, mimeType, content);
+        msg.type = MessageType.resource;
+        return msg;
+    }
+}
+
+/// Prompt response
+struct PromptResponse {
+    string description;
+    PromptMessage[] messages;
+
+    JSONValue toJSON() const {
+        return JSONValue([
+            "description": JSONValue(description),
+            "messages": JSONValue(messages.map!(m => m.toJSON()).array)
         ]);
     }
 }
 
 /// Handler for prompt content generation
-alias PromptHandler = JSONValue delegate(string name, JSONValue arguments);
+alias PromptHandler = PromptResponse delegate(string name, string[string] arguments);
 
 /// Prompt registry
 class PromptRegistry {
@@ -122,9 +200,6 @@ class PromptRegistry {
     
     /// List available prompts
     JSONValue listPrompts() {
-        import std.algorithm : map;
-        import std.array : array;
-        
         return JSONValue([
             "prompts": JSONValue(prompts.values
                 .map!(p => p.prompt.toJSON())
@@ -133,7 +208,7 @@ class PromptRegistry {
     }
     
     /// Get prompt content
-    JSONValue getPromptContent(string name, JSONValue arguments) {
+    JSONValue getPromptContent(string name, JSONValue rawArguments) {
         auto storedPrompt = name in prompts;
         if (storedPrompt is null) {
             throw new MCPError(
@@ -141,14 +216,20 @@ class PromptRegistry {
                 "Prompt not found: " ~ name
             );
         }
-        
+
+        // Extract arguments
+        string[string] arguments;
+        if (rawArguments.type != JSONType.null_ && "arguments" in rawArguments) {
+            foreach (string key, value; rawArguments["arguments"].object) {
+                if (value.type == JSONType.string) {
+                    arguments[key] = value.str;
+                }
+            }
+        }
+
         // Validate required arguments
         foreach (arg; storedPrompt.prompt.arguments) {
-            if (arg.required && (
-                arguments.type == JSONType.null_ ||
-                "arguments" !in arguments ||
-                arg.name !in arguments["arguments"]
-            )) {
+            if (arg.required && (arg.name !in arguments)) {
                 throw new MCPError(
                     ErrorCode.invalidParams,
                     "Missing required argument: " ~ arg.name
@@ -156,34 +237,27 @@ class PromptRegistry {
             }
         }
         
-        // Get prompt content from handler
-        auto result = storedPrompt.handler(name, arguments);
+        // Get prompt content
+        auto response = storedPrompt.handler(name, arguments);
         
-        // Validate message roles
-        if ("messages" !in result || result["messages"].type != JSONType.array) {
+        // Validate response
+        if (response.messages.length == 0) {
             throw new MCPError(
                 ErrorCode.internalError,
-                "Invalid prompt handler response: missing or invalid messages array"
+                "Invalid prompt response: missing messages"
             );
         }
         
-        foreach (message; result["messages"].array) {
-            if ("role" !in message || message["role"].type != JSONType.string) {
+        // Validate roles
+        foreach (message; response.messages) {
+            if (message.role != "user" && message.role != "assistant") {
                 throw new MCPError(
                     ErrorCode.internalError,
-                    "Invalid prompt message: missing or invalid role"
-                );
-            }
-            
-            auto role = message["role"].str;
-            if (role != "user" && role != "assistant") {
-                throw new MCPError(
-                    ErrorCode.internalError,
-                    "Invalid role: " ~ role
+                    "Invalid role: " ~ message.role
                 );
             }
         }
         
-        return result;
+        return response.toJSON();
     }
 }

@@ -73,10 +73,10 @@ class MCPServer {
     /// Add prompt
     void addPrompt(string name, string description,
                   PromptArgument[] arguments,
-                  PromptHandler handler) {
+                  PromptResponse delegate(string, string[string]) handler) {
         promptRegistry.addPrompt(
             Prompt(name, description, arguments),
-            handler
+            handler  // Type matches PromptHandler alias
         );
     }
     
@@ -195,6 +195,23 @@ class MCPServer {
         }
 
         // Tool methods
+        if (request.method == "prompts/list") {
+            return Response.success(request.id, promptRegistry.listPrompts()).toJSON();
+        }
+
+        if (request.method == "prompts/get") {
+            auto params = request.params;
+            if ("name" !in params) {
+                throw new MCPError(
+                    ErrorCode.invalidParams,
+                    "Missing prompt name"
+                );
+            }
+            auto name = params["name"].str;
+            auto result = promptRegistry.getPromptContent(name, params);
+            return Response.success(request.id, result).toJSON();
+        }
+        
         if (request.method == "tools/list") {
             return Response.success(
                 request.id,
@@ -250,29 +267,7 @@ class MCPServer {
             ])).toJSON();
         }
 
-        // Prompt methods
-        if (request.method == "prompts/list") {
-            return Response.success(
-                request.id,
-                promptRegistry.listPrompts()
-            ).toJSON();
-        }
 
-        if (request.method == "prompts/get") {
-            auto params = request.params;
-            if ("name" !in params) {
-                throw new MCPError(
-                    ErrorCode.invalidParams,
-                    "Missing prompt name"
-                );
-            }
-            auto name = params["name"].str;
-            auto arguments = "arguments" in params ? params["arguments"] : JSONValue(null);
-
-            auto result = promptRegistry.getPromptContent(name, arguments);
-            return Response.success(request.id, result).toJSON();
-        }
-        
         // Unknown method
         throw new MCPError(
             ErrorCode.methodNotFound,
