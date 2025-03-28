@@ -7,6 +7,7 @@ import mcp.protocol;
 import mcp.schema;
 import mcp.tools;
 import mcp.resources;
+import mcp.prompts;
 import mcp.transport.stdio;
 
 /// MCP server implementation
@@ -14,6 +15,7 @@ class MCPServer {
     private {
         ToolRegistry toolRegistry;
         ResourceRegistry resourceRegistry;
+        PromptRegistry promptRegistry;
         Transport transport;
         bool initialized;
         ServerInfo serverInfo;
@@ -24,6 +26,16 @@ class MCPServer {
         this.transport = transport;
         transport.setMessageHandler(&handleMessage);
         toolRegistry = new ToolRegistry();
+        
+        // Set up prompt registry with notification handler
+        promptRegistry = new PromptRegistry((string name) {
+            if (transport && capabilities.prompts.listChanged) {
+                transport.sendMessage(JSONValue([
+                    "jsonrpc": JSONValue(JSONRPC_VERSION),
+                    "method": JSONValue("notifications/prompts/list_changed")
+                ]));
+            }
+        });
         
         // Set up resource registry with notification handler
         resourceRegistry = new ResourceRegistry((string uri) {
@@ -41,7 +53,8 @@ class MCPServer {
         serverInfo = ServerInfo(name, version_);
         capabilities = ServerCapabilities(
             ResourceCapabilities(true, false),  // listChanged=true, subscribe=false
-            ToolCapabilities(true)              // listChanged=true
+            ToolCapabilities(true),            // listChanged=true
+            PromptCapabilities(true)           // listChanged=true
         );
     }
 
@@ -55,6 +68,16 @@ class MCPServer {
     void addTool(string name, string description,
                  SchemaBuilder schema, ToolHandler handler) {
         toolRegistry.addTool(name, description, schema, handler);
+    }
+    
+    /// Add prompt
+    void addPrompt(string name, string description,
+                  PromptArgument[] arguments,
+                  PromptHandler handler) {
+        promptRegistry.addPrompt(
+            Prompt(name, description, arguments),
+            handler
+        );
     }
     
     /// Add static resource
@@ -166,6 +189,11 @@ class MCPServer {
             ])).toJSON();
         }
         
+        // Ping method
+        if (request.method == "ping") {
+            return Response.success(request.id, JSONValue.emptyObject).toJSON();
+        }
+
         // Tool methods
         if (request.method == "tools/list") {
             return Response.success(
@@ -221,6 +249,29 @@ class MCPServer {
                 "contents": [contents.toJSON()]
             ])).toJSON();
         }
+
+        // Prompt methods
+        if (request.method == "prompts/list") {
+            return Response.success(
+                request.id,
+                promptRegistry.listPrompts()
+            ).toJSON();
+        }
+
+        if (request.method == "prompts/get") {
+            auto params = request.params;
+            if ("name" !in params) {
+                throw new MCPError(
+                    ErrorCode.invalidParams,
+                    "Missing prompt name"
+                );
+            }
+            auto name = params["name"].str;
+            auto arguments = "arguments" in params ? params["arguments"] : JSONValue(null);
+
+            auto result = promptRegistry.getPromptContent(name, arguments);
+            return Response.success(request.id, result).toJSON();
+        }
         
         // Unknown method
         throw new MCPError(
@@ -243,11 +294,13 @@ class MCPServer {
 private struct ServerCapabilities {
     ResourceCapabilities resources;
     ToolCapabilities tools;
+    PromptCapabilities prompts;
     
     JSONValue toJSON() const {
         return JSONValue([
             "resources": resources.toJSON(),
-            "tools": tools.toJSON()
+            "tools": tools.toJSON(),
+            "prompts": prompts.toJSON()
         ]);
     }
 }
@@ -265,6 +318,16 @@ private struct ResourceCapabilities {
 }
 
 private struct ToolCapabilities {
+    bool listChanged;
+    
+    JSONValue toJSON() const {
+        return JSONValue([
+            "listChanged": JSONValue(listChanged)
+        ]);
+    }
+}
+
+private struct PromptCapabilities {
     bool listChanged;
     
     JSONValue toJSON() const {

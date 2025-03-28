@@ -4,6 +4,7 @@ import mcp.server;
 import mcp.transport.stdio : Transport;
 import mcp.protocol : ErrorCode;
 import mcp.resources;
+import mcp.prompts;
 import mcp.schema;
 import std.json;
 import std.conv : to;
@@ -177,6 +178,42 @@ unittest {
     assert(transport.sentMessages[0]["error"]["code"].integer == ErrorCode.methodNotFound);
 }
 
+@("Server - ping handler")
+unittest {
+    auto transport = new MockTransport();
+    auto server = new MCPServer(transport, "Test Server", "1.0.0");
+
+    // Initialize server
+    transport.simulateMessage(JSONValue([
+        "jsonrpc": JSONValue("2.0"),
+        "id": JSONValue(1),
+        "method": JSONValue("initialize"),
+        "params": JSONValue([
+            "protocolVersion": JSONValue("2024-11-05"),
+            "capabilities": JSONValue.emptyObject,
+            "clientInfo": JSONValue([
+                "name": JSONValue("Test Client"),
+                "version": JSONValue("1.0.0")
+            ])
+        ])
+    ]));
+    transport.sentMessages = [];
+
+    // Test ping request
+    transport.simulateMessage(JSONValue([
+        "jsonrpc": JSONValue("2.0"),
+        "id": JSONValue(2),
+        "method": JSONValue("ping")
+    ]));
+
+    assert(transport.sentMessages.length == 1);
+    auto response = transport.sentMessages[0];
+    assert(response["jsonrpc"] == JSONValue("2.0"));
+    assert(response["id"].integer == 2);
+    assert(response["result"].type == JSONType.object);
+    assert(response["result"].object.length == 0);
+}
+
 @("Server - error handling")
 unittest {
     auto transport = new MockTransport();
@@ -238,6 +275,122 @@ unittest {
     assert(methodErrorResponse["error"]["code"].integer == ErrorCode.methodNotFound);
 }
 
+
+@("Server - prompt handling")
+unittest {
+    // Create server with mock transport
+    auto transport = new MockTransport();
+    auto server = new MCPServer(transport, "Test Server", "1.0.0");
+
+    // Add test prompt
+    server.addPrompt(
+        "greet",
+        "Greeting prompt",
+        [PromptArgument("name", "User's name", true)],
+        (string name, JSONValue args) {
+            auto userName = args["arguments"]["name"].str;
+            return JSONValue([
+                "description": JSONValue("Test response"),
+                "messages": JSONValue([
+                    JSONValue([
+                        "role": JSONValue("user"),
+                        "content": JSONValue([
+                            "type": JSONValue("text"),
+                            "text": JSONValue("Hello " ~ userName)
+                        ])
+                    ])
+                ])
+            ]);
+        }
+    );
+
+    // Simulate initialization
+    transport.simulateMessage(JSONValue([
+        "jsonrpc": JSONValue("2.0"),
+        "id": JSONValue(1),
+        "method": JSONValue("initialize"),
+        "params": JSONValue([
+            "protocolVersion": JSONValue("2024-11-05"),
+            "capabilities": JSONValue.emptyObject,
+            "clientInfo": JSONValue([
+                "name": JSONValue("Test Client"),
+                "version": JSONValue("1.0.0")
+            ])
+        ])
+    ]));
+
+    // Check capabilities include prompts
+    assert(transport.sentMessages.length == 1);
+    auto initResponse = transport.sentMessages[0];
+    assert(initResponse["result"]["capabilities"]["prompts"]["listChanged"] == JSONValue(true));
+    transport.sentMessages = [];
+
+    // Test prompts/list
+    transport.simulateMessage(JSONValue([
+        "jsonrpc": JSONValue("2.0"),
+        "id": JSONValue(2),
+        "method": JSONValue("prompts/list")
+    ]));
+
+    assert(transport.sentMessages.length == 1);
+    auto prompts = transport.sentMessages[0]["result"]["prompts"].array;
+    assert(prompts.length == 1);
+    assert(prompts[0]["name"] == JSONValue("greet"));
+    assert(prompts[0]["description"] == JSONValue("Greeting prompt"));
+    assert(prompts[0]["arguments"].array.length == 1);
+    transport.sentMessages = [];
+
+    // Test prompts/get
+    transport.simulateMessage(JSONValue([
+        "jsonrpc": JSONValue("2.0"),
+        "id": JSONValue(3),
+        "method": JSONValue("prompts/get"),
+        "params": JSONValue([
+            "name": JSONValue("greet"),
+            "arguments": JSONValue([
+                "name": JSONValue("Alice")
+            ])
+        ])
+    ]));
+
+    assert(transport.sentMessages.length == 1);
+    auto getResponse = transport.sentMessages[0];
+    assert(getResponse["result"]["description"] == JSONValue("Test response"));
+    auto messages = getResponse["result"]["messages"].array;
+    assert(messages.length == 1);
+    assert(messages[0]["role"] == JSONValue("user"));
+    assert(messages[0]["content"]["type"] == JSONValue("text"));
+    assert(messages[0]["content"]["text"] == JSONValue("Hello Alice"));
+    transport.sentMessages = [];
+
+    // Test prompts/get with missing required argument
+    transport.simulateMessage(JSONValue([
+        "jsonrpc": JSONValue("2.0"),
+        "id": JSONValue(4),
+        "method": JSONValue("prompts/get"),
+        "params": JSONValue([
+            "name": JSONValue("greet")
+        ])
+    ]));
+
+    assert(transport.sentMessages.length == 1);
+    assert(transport.sentMessages[0]["error"]["code"].integer == ErrorCode.invalidParams);
+    transport.sentMessages = [];
+
+    // Test prompts/get with unknown prompt
+    transport.simulateMessage(JSONValue([
+        "jsonrpc": JSONValue("2.0"),
+        "id": JSONValue(5),
+        "method": JSONValue("prompts/get"),
+        "params": JSONValue([
+            "name": JSONValue("unknown"),
+            "arguments": JSONValue.emptyObject
+        ])
+    ]));
+
+    assert(transport.sentMessages.length == 1);
+    assert(transport.sentMessages[0]["error"]["code"].integer == ErrorCode.methodNotFound);
+}
 
 @("Server - resource template handling")
 unittest {

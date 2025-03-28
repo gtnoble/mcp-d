@@ -209,7 +209,6 @@ unittest {
         "text/plain",
         (params) {
             import std.stdio;
-            writeln("Params: ", params);  // Debug print
             
             // Direct value assertions
             assert(params["user"] == "alice" || params["user"] == "bob", 
