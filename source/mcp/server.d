@@ -20,7 +20,9 @@ class MCPServer {
         ServerCapabilities capabilities;
     }
     
-    this(string name = "D MCP Server", string version_ = "1.0.0") {
+    this(Transport transport, string name = "D MCP Server", string version_ = "1.0.0") {
+        this.transport = transport;
+        transport.setMessageHandler(&handleMessage);
         toolRegistry = new ToolRegistry();
         
         // Set up resource registry with notification handler
@@ -41,6 +43,12 @@ class MCPServer {
             ResourceCapabilities(true, false),  // listChanged=true, subscribe=false
             ToolCapabilities(true)              // listChanged=true
         );
+    }
+
+    this(string name = "D MCP Server", string version_ = "1.0.0") {
+        auto transport = createStdioTransport();
+        transport.setMessageHandler(&handleMessage);
+        this(transport, name, version_);
     }
     
     /// Add tool
@@ -66,10 +74,18 @@ class MCPServer {
             baseUri, name, description, reader
         );
     }
+
+    /// Add resource template
+    ResourceNotifier addTemplate(string uriTemplate, string name,
+                               string description, string mimeType,
+                               ResourceContents delegate(string[string]) reader) {
+        return resourceRegistry.addTemplate(
+            uriTemplate, name, description, mimeType, reader
+        );
+    }
     
-    /// Start server with stdio transport
+    /// Start the server
     void start() {
-        transport = createStdioTransport(&handleMessage);
         transport.run();
     }
     
@@ -178,6 +194,13 @@ class MCPServer {
             return Response.success(
                 request.id,
                 resourceRegistry.listResources()
+            ).toJSON();
+        }
+        
+        if (request.method == "resources/templates/list") {
+            return Response.success(
+                request.id,
+                resourceRegistry.listTemplates()
             ).toJSON();
         }
         

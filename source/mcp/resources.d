@@ -1,8 +1,10 @@
 module mcp.resources;
 
 import std.json;
-import std.algorithm : sort, startsWith;
+import std.algorithm : sort, startsWith, map;
+import std.array : array;
 import std.base64;
+import std.regex;
 
 import mcp.mime;
 import mcp.protocol : MCPError, ErrorCode;
@@ -14,6 +16,15 @@ class ResourceNotFoundException : MCPError {
               "Resource not found: " ~ uri,
               null, file, line);
     }
+}
+
+/// Resource template definition
+struct ResourceTemplate {
+    string uriTemplate;   // RFC 6570 URI template
+    string name;         // Human-readable name
+    string description;  // Optional description
+    string mimeType;     // Optional MIME type
+    private ResourceContents delegate(string[string]) reader;  // Template handler
 }
 
 /// Resource content wrapper
@@ -75,6 +86,7 @@ class ResourceRegistry {
         }
         
         ResourceEntry[] resources;
+        ResourceTemplate[] templates;
         void delegate(string) notifySubscribers;
     }
     
@@ -142,29 +154,87 @@ class ResourceRegistry {
         return notifier;
     }
     
-    /// Read resource by URI
-    ResourceContents readResource(string uri) {
-        foreach (ref entry; resources) {
-            if (entry.isDynamic) {
-                if (uri.startsWith(entry.uri)) {
-                    // Extract path after base URI
-                    auto path = uri[entry.uri.length .. $];
-                    auto contents = entry.dynamicReader(path);
-                    contents.setURI(uri);
-                    return contents;
-                }
-            } else {
-                if (uri == entry.uri) {
-                    auto contents = entry.staticReader();
-                    contents.setURI(uri);
-                    return contents;
-                }
-            }
+    /// Add a resource template
+    ResourceNotifier addTemplate(
+        string uriTemplate,
+        string name,
+        string description,
+        string mimeType,
+        ResourceContents delegate(string[string]) reader
+    ) {
+        templates ~= ResourceTemplate(
+            uriTemplate,
+            name,
+            description,
+            mimeType,
+            reader
+        );
+
+        // Create notifier function
+        auto notifier = () {
+            if (notifySubscribers)
+                notifySubscribers(uriTemplate);
+        };
+
+        return notifier;
+    }
+
+    /// List available templates
+    JSONValue listTemplates() {
+        import std.algorithm : map;
+        import std.array : array;
+
+        return JSONValue([
+            "resourceTemplates": templates
+                .map!(t => JSONValue([
+                    "uriTemplate": t.uriTemplate,
+                    "name": t.name,
+                    "description": t.description,
+                    "mimeType": t.mimeType
+                ]))
+                .array
+        ]);
+    }
+
+    /// Extract parameters from URI using pattern matching
+    private string[string] matchTemplate(string uriPattern, string uri) {
+        string[string] params;
+        
+        // Extract parameter names first
+        auto paramMatches = uriPattern.matchAll(regex(r"\{([^}]+)\}"));
+        string[] paramNames = [];
+        foreach (m; paramMatches) {
+            paramNames ~= m[1];
         }
         
-        throw new ResourceNotFoundException(uri);
+        if (paramNames.length == 0) {
+            return null;
+        }
+        
+        // Convert URI pattern to regex pattern
+        string regexPattern = uriPattern;
+        foreach (name; paramNames) {
+            regexPattern = regexPattern.replaceAll(
+                regex(r"\{" ~ name ~ r"\}"), 
+                "([^/]+)"
+            );
+        }
+        auto pattern = regex("^" ~ regexPattern ~ "$");
+        
+        // Match URI against pattern
+        auto matches = matchFirst(uri, pattern);
+        if (!matches || matches.length != paramNames.length + 1) { // +1 for full match
+            return null;
+        }
+        
+        // Map captured values to parameter names
+        for (size_t i = 0; i < paramNames.length; i++) {
+            params[paramNames[i]] = matches[i + 1];
+        }
+        
+        return params;
     }
-    
+
     /// List available resources
     JSONValue listResources() {
         import std.algorithm : map;
@@ -179,5 +249,37 @@ class ResourceRegistry {
                 ]))
                 .array
         ]);
+    }
+
+    /// Read resource by URI, including template handling
+    ResourceContents readResource(string uri) {
+        // Try exact matches first
+        foreach (ref entry; resources) {
+            if (entry.isDynamic) {
+                if (uri.startsWith(entry.uri)) {
+                    auto path = uri[entry.uri.length .. $];
+                    auto contents = entry.dynamicReader(path);
+                    contents.setURI(uri);
+                    return contents;
+                }
+            } else {
+                if (uri == entry.uri) {
+                    auto contents = entry.staticReader();
+                    contents.setURI(uri);
+                    return contents;
+                }
+            }
+        }
+        
+        // Try template matches
+        foreach (ref tmpl; templates) {
+            if (auto params = matchTemplate(tmpl.uriTemplate, uri)) {
+                auto contents = tmpl.reader(params);
+                contents.setURI(uri);
+                return contents;
+            }
+        }
+        
+        throw new ResourceNotFoundException(uri);
     }
 }

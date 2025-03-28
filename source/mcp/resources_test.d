@@ -4,7 +4,7 @@ import mcp.resources;
 import mcp.mime;
 import std.json;
 import std.base64;
-import std.algorithm : equal;
+import std.algorithm : equal, endsWith;
 
 @("ResourceContents - text resource creation")
 unittest {
@@ -195,4 +195,105 @@ unittest {
 
     notifier2();
     assert(lastNotifiedUri == "test://resource2/");
+}
+
+@("ResourceRegistry - template resources")
+unittest {
+    auto registry = new ResourceRegistry(null);
+
+    // Add template resource
+    registry.addTemplate(
+        "test://{user}/repos/{repo}",
+        "Repository",
+        "Access user repositories",
+        "text/plain",
+        (params) {
+            import std.stdio;
+            writeln("Params: ", params);  // Debug print
+            
+            // Direct value assertions
+            assert(params["user"] == "alice" || params["user"] == "bob", 
+                   "Unexpected or missing user parameter: " ~ params["user"]);
+            assert(params["repo"] == "project1" || params["repo"] == "demo",
+                   "Unexpected or missing repo parameter: " ~ params["repo"]);
+                   
+            return ResourceContents.makeText(
+                "text/plain", 
+                params["user"] ~ "/" ~ params["repo"]
+            );
+        }
+    );
+
+    // Test accessing templated resource
+    auto content = registry.readResource("test://alice/repos/project1");
+    assert(content.textContent == "alice/project1");
+    auto json = content.toJSON();
+    assert(json["uri"].str == "test://alice/repos/project1");
+
+    // Test accessing with different parameters
+    content = registry.readResource("test://bob/repos/demo");
+    assert(content.textContent == "bob/demo");
+    json = content.toJSON();
+    assert(json["uri"].str == "test://bob/repos/demo");
+
+    // Test non-matching URI format
+    import std.exception : assertThrown;
+    assertThrown!ResourceNotFoundException(
+        registry.readResource("test://alice/invalid/project1")
+    );
+
+    // Test template listing
+    auto list = registry.listTemplates();
+    assert(list["resourceTemplates"].array.length == 1);
+    auto tmpl = list["resourceTemplates"][0];
+    assert(tmpl["uriTemplate"].str == "test://{user}/repos/{repo}");
+    assert(tmpl["name"].str == "Repository");
+    assert(tmpl["description"].str == "Access user repositories");
+    assert(tmpl["mimeType"].str == "text/plain");
+}
+
+@("ResourceRegistry - template with optional MIME type")
+unittest {
+    auto registry = new ResourceRegistry(null);
+
+    // Add template without MIME type
+    registry.addTemplate(
+        "files://{path}",
+        "File Access",
+        "Access files by path",
+        null,  // No MIME type specified
+        (params) {
+            assert("path" in params);
+            string path = params["path"];
+            // Set MIME type based on path
+            string mimeType = path.endsWith(".txt") ? "text/plain" : "application/octet-stream";
+            return ResourceContents.makeText(mimeType, "Content of " ~ path);
+        }
+    );
+
+    // Test with different file types
+    auto txtContent = registry.readResource("files://test.txt");
+    assert(txtContent.mimeType == "text/plain");
+
+    auto binContent = registry.readResource("files://data.bin");
+    assert(binContent.mimeType == "application/octet-stream");
+}
+
+@("ResourceRegistry - template notification")
+unittest {
+    string lastNotifiedUri;
+    auto registry = new ResourceRegistry((uri) { lastNotifiedUri = uri; });
+
+    // Add template resource with notification
+    auto notifier = registry.addTemplate(
+        "notify://{id}",
+        "Notification Test",
+        "Test template notifications",
+        "text/plain",
+        (params) => ResourceContents.makeText("text/plain", params["id"])
+    );
+
+    // Test notification
+    notifier();
+    assert(lastNotifiedUri == "notify://{id}");
 }

@@ -4,7 +4,8 @@ import std.json;
 import std.traits : isNumeric, isIntegral;
 import std.format : format;
 import std.regex : regex, matchFirst;
-import std.math : abs, approxEqual;
+import std.math : abs;
+import std.math.operations : isClose;
 
 /// Schema type enumeration
 enum SchemaType {
@@ -207,7 +208,7 @@ class SchemaBuilder {
 
         if (hasMultipleOf) {
             auto remainder = numValue % multipleOfValue;
-            if (!approxEqual(remainder, 0.0) && !approxEqual(remainder, multipleOfValue)) {
+            if (!isClose(remainder, 0.0) && !isClose(remainder, multipleOfValue)) {
                 throw new SchemaValidationError(
                     format("Value %g must be a multiple of %g", numValue, multipleOfValue),
                     path

@@ -8,6 +8,7 @@ import mcp.protocol;
 
 /// Transport base interface
 interface Transport {
+    void setMessageHandler(void delegate(JSONValue) handler);
     void handleMessage(JSONValue message);
     void sendMessage(JSONValue message);
     void run();
@@ -23,12 +24,13 @@ class StdioTransport : Transport {
         bool closed;
     }
     
-    this(void delegate(JSONValue) handler, 
-         File input = std.stdio.stdin,
-         File output = std.stdio.stdout) {
-        this.messageHandler = handler;
+    this(File input = std.stdio.stdin, File output = std.stdio.stdout) {
         this.input = input;
         this.output = output;
+    }
+
+    void setMessageHandler(void delegate(JSONValue) handler) {
+        this.messageHandler = handler;
     }
     
     /// Handle incoming message
@@ -96,10 +98,10 @@ class StdioTransport : Transport {
 }
 
 /// Create stdio transport with line buffering
-StdioTransport createStdioTransport(void delegate(JSONValue) handler) {
+StdioTransport createStdioTransport() {
     // Set up line buffering
     stdin.setvbuf(1024, _IOLBF);
     stdout.setvbuf(1024, _IOLBF);
     
-    return new StdioTransport(handler);
+    return new StdioTransport();
 }
