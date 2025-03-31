@@ -1,3 +1,19 @@
+/**
+ * Example MCP server application.
+ *
+ * This module demonstrates how to use the D MCP Server library to create
+ * a fully functional MCP server with tools, resources, and prompts.
+ *
+ * The example includes:
+ * - Setting up an MCP server with custom name and version
+ * - Registering tools with schema validation
+ * - Creating various types of prompts (text, image, resource)
+ * - Adding static and template-based resources
+ * - Implementing change notifications
+ *
+ * This can be used as a reference implementation for creating your own
+ * MCP servers with the library.
+ */
 import std.stdio;
 import std.conv : to;
 import std.json;
@@ -8,12 +24,47 @@ import mcp.schema;
 import mcp.resources : ResourceContents;
 import mcp.prompts;
 
+// Create shared state for resources
+__gshared {
+    int counter = 0;
+    long lastUpdateTime = 0;
+    int requestCount = 0;
+}
+
 version(unittest) {} else
+/**
+ * Main entry point for the example MCP server.
+ *
+ * This function creates and configures an MCP server with example
+ * tools, prompts, and resources, then starts it.
+ */
 void main() {
-    // Create server with custom name and version
+    /**
+     * Create a new MCP server with a custom name and version.
+     *
+     * This constructor uses the default stdio transport, which reads
+     * from stdin and writes to stdout. This is the standard transport
+     * for MCP servers.
+     *
+     * The server name and version are reported to clients during
+     * initialization.
+     */
+    // Initialize server
     auto server = new MCPServer("Example MCP Server", "0.1.0");
-    
-    // Add a simple calculator tool
+
+    /**
+     * Example 1: Simple calculator tool with numeric validation
+     *
+     * This example demonstrates:
+     * - Creating a tool with a descriptive name and description
+     * - Defining a schema with numeric properties and constraints
+     * - Implementing a handler function that processes the arguments
+     * - Returning a simple JSON result
+     *
+     * The schema validates that:
+     * - Both 'a' and 'b' are numbers
+     * - Both values are within the range -1000 to 1000
+     */
     server.addTool(
         "add",                        // Tool name
         "Add two numbers",            // Description
@@ -33,7 +84,19 @@ void main() {
         }
     );
     
-    // Add a text processing tool
+    /**
+     * Example 2: Text processing tool with string validation
+     *
+     * This example demonstrates:
+     * - Creating a tool that processes text input
+     * - Defining a schema with string properties and constraints
+     * - Using string length validation
+     * - Importing and using standard library functions in handlers
+     *
+     * The schema validates that:
+     * - The 'text' property is a string
+     * - The string length is between 1 and 1000 characters
+     */
     server.addTool(
         "capitalize",
         "Convert text to uppercase",
@@ -48,9 +111,25 @@ void main() {
         }
     );
     
-    // Add example prompts
+    /**
+     * Example prompts section
+     *
+     * The following examples demonstrate different types of prompts
+     * that can be registered with the MCP server.
+     */
     
-    // 1. Simple text prompt
+    /**
+     * Example 3: Simple text prompt with language selection
+     *
+     * This example demonstrates:
+     * - Creating a prompt with required and optional arguments
+     * - Implementing conditional logic based on arguments
+     * - Returning a text-only response
+     *
+     * The prompt accepts:
+     * - 'name' (required): The user's name to include in the greeting
+     * - 'language' (optional): Language code for localization (en/es)
+     */
     server.addPrompt(
         "greet",
         "A friendly greeting prompt",
@@ -59,6 +138,7 @@ void main() {
             PromptArgument("language", "Language code (en/es)", false)
         ],
         (string name, string[string] args) {
+            // Conditional logic based on the optional language argument
             string greeting = "language" in args && args["language"] == "es" ?
                 "¡Hola" : "Hello";
             
@@ -69,7 +149,18 @@ void main() {
         }
     );
     
-    // 2. Multi-modal prompt with image
+    /**
+     * Example 4: Multi-modal prompt with text and image content
+     *
+     * This example demonstrates:
+     * - Creating a prompt that returns multiple content types
+     * - Including both text and image content in a response
+     * - Using base64-encoded image data
+     *
+     * The prompt accepts:
+     * - 'username' (required): The username to display on the badge
+     * - 'role' (required): The user's role (admin/user)
+     */
     server.addPrompt(
         "image_badge",
         "Generate a user badge with avatar",
@@ -79,16 +170,19 @@ void main() {
         ],
         (string name, string[string] args) {
             // Example base64 encoded 1x1 pixel PNG
+            // In a real application, this would be a dynamically generated image
             auto imageData = 
                 "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAACklEQVR4nGMAAQAABQABDQottAAAAABJRU5ErkJggg==";
             
             return PromptResponse(
                 "User badge for " ~ args["username"],
                 [
+                    // First message: Text content
                     PromptMessage.text(
                         "assistant",
                         "User Badge for " ~ args["username"] ~ " (" ~ args["role"] ~ ")"
                     ),
+                    // Second message: Image content
                     PromptMessage.image(
                         "assistant",
                         imageData,
@@ -99,7 +193,16 @@ void main() {
         }
     );
     
-    // 3. Prompt with embedded resource
+    /**
+     * Example 5: Prompt with embedded resource reference
+     *
+     * This example demonstrates:
+     * - Creating a prompt that references resources
+     * - Including resource content in a response
+     * - Combining text and resource messages
+     *
+     * This prompt has no arguments and always returns the same content.
+     */
     server.addPrompt(
         "system_info",
         "Show system information",
@@ -108,11 +211,12 @@ void main() {
             return PromptResponse(
                 "System information",
                 [
+                    // First message: Text introduction
                     PromptMessage.text(
                         "assistant",
                         "Here's the current system information:"
                     ),
-                    // Pass content directly to match the resource message format
+                    // Second message: Resource reference with inline content
                     PromptMessage.resource(
                         "assistant",
                         "config://version",
@@ -124,7 +228,16 @@ void main() {
         }
     );
     
-    // Add a static configuration resource
+    /**
+     * Example 6: Static configuration resource with JSON content
+     *
+     * This example demonstrates:
+     * - Creating a static resource with fixed content
+     * - Using a custom URI scheme (config://)
+     * - Returning JSON content with a specific MIME type
+     *
+     * Static resources always return the same content when accessed.
+     */
     server.addResource(
         "config://version",           // Resource URI
         "Version Info",               // Name
@@ -132,23 +245,94 @@ void main() {
         () {
             return ResourceContents.makeText(
                 "application/json",
-                `{"version": "0.1.0", "built": "2025-03-26"}`
+                `{"version": "0.1.0", "built": "2025-03-31"}`
             );
         }
     );
     
-    // Add a static text resource with change notification
-    auto notifyGreetingChanged = server.addResource(
-        "memory://greeting",
-        "Greeting",
-        "A friendly greeting",
+    /**
+     * Example 7: Auto-updating server status resource
+     *
+     * This example demonstrates:
+     * - Creating a resource that updates automatically
+     * - Using timers to trigger periodic updates
+     * - Sending change notifications when content changes
+     */
+    import core.thread;
+    import core.time;
+    import std.datetime.systime;
+
+    // Add server status resource
+    auto notifyStatusChanged = server.addResource(
+        "status://server",
+        "Server Status",
+        "Current server metrics and status",
+        () {
+            auto currentTime = Clock.currTime();
+            requestCount++;
+            
+            auto status = JSONValue([
+                "timestamp": JSONValue(currentTime.toISOExtString()),
+                "uptime": JSONValue((currentTime.toUnixTime() - lastUpdateTime)),
+                "requests": JSONValue(requestCount)
+            ]);
+
+            return ResourceContents.makeText(
+                "application/json",
+                status.toString()
+            );
+        }
+    );
+
+    /**
+     * Example 8: Interactive counter with change notification
+     * 
+     * This example demonstrates:
+     * - Resource modification through tool calls
+     * - Change notifications triggered by updates
+     * - Combining tools and resources
+     */
+    
+    // Add counter resource
+    auto notifyCounterChanged = server.addResource(
+        "counter://value",
+        "Counter Value",
+        "An incrementing counter that can be modified",
         () => ResourceContents.makeText(
-            "text/plain",
-            "Hello, World!"
+            "application/json",
+            JSONValue(["value": JSONValue(counter)]).toString()
         )
     );
+
+    // Add tool to increment counter
+    server.addTool(
+        "incrementCounter",
+        "Increment the counter value",
+        SchemaBuilder.object()
+            .addProperty("amount",
+                SchemaBuilder.number()
+                    .setDescription("Amount to increment by")
+                    .range(1, 100)),
+        (JSONValue args) {
+            auto amount = "amount" in args ? args["amount"].get!int : 1;
+            counter += amount;
+            notifyCounterChanged(); // Trigger notification
+            return JSONValue(["newValue": JSONValue(counter)]);
+        }
+    );
     
-    // Add a weather forecast template resource
+    /**
+     * Example 9: Template resource with parameter extraction
+     *
+     * This example demonstrates:
+     * - Creating a resource template with parameters
+     * - Extracting parameters from the URI
+     * - Generating dynamic content based on parameters
+     *
+     * Template resources use URI templates with parameters in {braces}.
+     * When a client requests a URI that matches the template, the
+     * parameters are extracted and passed to the reader function.
+     */
     server.addTemplate(
         "weather://{city}/{date}",       // URI template
         "Weather Forecast",              // Name
@@ -158,7 +342,7 @@ void main() {
             // Validate required parameters
             assert("city" in params && "date" in params);
             
-            // Generate mock weather data
+            // Generate mock weather data based on the parameters
             auto forecast = JSONValue([
                 "city": JSONValue(params["city"]),
                 "date": JSONValue(params["date"]),
@@ -174,7 +358,24 @@ void main() {
             );
         }
     );
+
+    // Start update thread
+    new Thread({
+        while (true) {
+            if (lastUpdateTime == 0) {
+                lastUpdateTime = Clock.currTime().toUnixTime();
+            }
+            notifyStatusChanged(); // Trigger notification
+            Thread.sleep(5.seconds);
+        }
+    }).start();
+
     
-    // Start the server
+    /**
+     * Start the server and begin processing messages.
+     *
+     * This method starts the transport layer and begins handling
+     * incoming messages. It will block until the input stream is closed.
+     */
     server.start();
 }

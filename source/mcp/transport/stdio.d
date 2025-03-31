@@ -1,3 +1,30 @@
+/**
+ * Standard I/O transport for MCP.
+ *
+ * This module provides a transport implementation that uses standard input
+ * and output for communication. It handles message framing, parsing, and
+ * error handling according to the MCP protocol.
+ *
+ * The module includes:
+ * - Transport interface definition
+ * - StdioTransport implementation
+ * - Helper function for creating properly configured transports
+ *
+ * Example:
+ * ```d
+ * // Create a transport with default stdin/stdout
+ * auto transport = createStdioTransport();
+ *
+ * // Set message handler
+ * transport.setMessageHandler((JSONValue message) {
+ *     writeln("Received: ", message);
+ *     transport.sendMessage(JSONValue(["response": "Hello"]));
+ * });
+ *
+ * // Start processing messages
+ * transport.run();
+ * ```
+ */
 module mcp.transport.stdio;
 
 import std.stdio;
@@ -6,7 +33,12 @@ import std.string : strip;
 
 import mcp.protocol;
 
-/// Transport base interface
+/**
+ * Transport interface for MCP communication.
+ *
+ * This interface defines the methods required for any transport
+ * implementation in the MCP system.
+ */
 interface Transport {
     void setMessageHandler(void delegate(JSONValue) handler);
     void handleMessage(JSONValue message);
@@ -15,7 +47,13 @@ interface Transport {
     void close();
 }
 
-/// Stdio transport implementation
+/**
+ * Standard I/O transport implementation.
+ *
+ * This class implements the Transport interface using standard input
+ * and output streams. It handles message framing, parsing, and error
+ * handling according to the MCP protocol.
+ */
 class StdioTransport : Transport {
     private {
         void delegate(JSONValue) messageHandler;
@@ -29,16 +67,40 @@ class StdioTransport : Transport {
         this.output = output;
     }
 
+    /**
+     * Sets the message handler function.
+     *
+     * The message handler is called for each valid JSON message
+     * received from the input stream.
+     *
+     * Params:
+     *   handler = The function to call for each message
+     */
     void setMessageHandler(void delegate(JSONValue) handler) {
         this.messageHandler = handler;
     }
     
-    /// Handle incoming message
+    /**
+     * Handles an incoming message.
+     *
+     * This method passes the message to the registered handler.
+     *
+     * Params:
+     *   message = The JSON message to handle
+     */
     void handleMessage(JSONValue message) {
         messageHandler(message);
     }
     
-    /// Send message to output
+    /**
+     * Sends a message to the output stream.
+     *
+     * This method serializes the JSON message and writes it
+     * to the output stream with proper framing.
+     *
+     * Params:
+     *   message = The JSON message to send
+     */
     void sendMessage(JSONValue message) {
         synchronized(this) {
             if (!closed) {
@@ -48,7 +110,13 @@ class StdioTransport : Transport {
         }
     }
     
-    /// Main message loop
+    /**
+     * Starts the main message processing loop.
+     *
+     * This method reads messages from the input stream, parses them,
+     * and passes them to the message handler. It continues until
+     * the input stream is closed or an error occurs.
+     */
     void run() {
         while (!input.eof && !closed) {
             try {
@@ -87,7 +155,12 @@ class StdioTransport : Transport {
         }
     }
     
-    /// Close transport
+    /**
+     * Closes the transport.
+     *
+     * This method closes the input and output streams and
+     * prevents further message processing.
+     */
     void close() {
         synchronized(this) {
             closed = true;
@@ -97,7 +170,15 @@ class StdioTransport : Transport {
     }
 }
 
-/// Create stdio transport with line buffering
+/**
+ * Creates a properly configured stdio transport.
+ *
+ * This function creates a StdioTransport with line buffering
+ * configured for optimal performance.
+ *
+ * Returns:
+ *   A new StdioTransport instance
+ */
 StdioTransport createStdioTransport() {
     // Set up line buffering
     stdin.setvbuf(1024, _IOLBF);

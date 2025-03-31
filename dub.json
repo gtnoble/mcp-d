@@ -12,6 +12,7 @@
         },
         {
             "name": "example",
+            "targetName": "example",
             "targetType": "executable",
             "sourceFiles": ["source/app.d"],
             "mainSourceFile": "source/app.d"

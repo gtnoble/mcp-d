@@ -1,3 +1,44 @@
+/**
+ * Resource management for MCP.
+ *
+ * This module provides functionality for managing resources in the MCP server.
+ * Resources are content that can be accessed by URI and can be static, dynamic,
+ * or template-based.
+ *
+ * The module includes:
+ * - Resource registry for managing available resources
+ * - Static and dynamic resource handling
+ * - URI template support
+ * - Resource content management
+ * - Change notification system
+ *
+ * Example:
+ * ```d
+ * // Create a resource registry with notification callback
+ * auto registry = new ResourceRegistry((string uri) {
+ *     writeln("Resource changed: ", uri);
+ * });
+ *
+ * // Add a static resource
+ * registry.addResource(
+ *     "resource://example/greeting",
+ *     "Greeting",
+ *     "A simple greeting resource",
+ *     () => ResourceContents.makeText("text/plain", "Hello, world!")
+ * );
+ *
+ * // Add a dynamic resource
+ * registry.addDynamicResource(
+ *     "resource://example/users/",
+ *     "User Profiles",
+ *     "Access user profiles by ID",
+ *     (string path) => ResourceContents.makeText(
+ *         "application/json",
+ *         `{"id":"` ~ path ~ `","name":"User ` ~ path ~ `"}`
+ *     )
+ * );
+ * ```
+ */
 module mcp.resources;
 
 import std.json;
@@ -9,7 +50,11 @@ import std.regex;
 import mcp.mime;
 import mcp.protocol : MCPError, ErrorCode;
 
-/// Resource not found error
+/**
+ * Exception thrown when a resource is not found.
+ *
+ * This exception is used when a client requests a resource that doesn't exist.
+ */
 class ResourceNotFoundException : MCPError {
     this(string uri, string file = __FILE__, size_t line = __LINE__) {
         super(ErrorCode.methodNotFound, 
@@ -18,7 +63,13 @@ class ResourceNotFoundException : MCPError {
     }
 }
 
-/// Resource template definition
+/**
+ * Resource template definition.
+ *
+ * Templates allow parameterized URIs with variable substitution.
+ * For example, a template with URI "resource://users/{id}" can match
+ * "resource://users/123" and extract the id parameter.
+ */
 struct ResourceTemplate {
     string uriTemplate;   // RFC 6570 URI template
     string name;         // Human-readable name
@@ -27,27 +78,66 @@ struct ResourceTemplate {
     private ResourceContents delegate(string[string]) reader;  // Template handler
 }
 
-/// Resource content wrapper
+/**
+ * Resource content wrapper.
+ *
+ * This structure encapsulates the content of a resource, which can be
+ * either text or binary data, along with its MIME type and URI.
+ */
 struct ResourceContents {
     string mimeType;     // Content MIME type
     string textContent;  // Text content (if text)
     ubyte[] blob;       // Binary content (if binary)
     private string _uri; // Resource URI (set by registry)
     
-    /// Create text resource
+    /**
+     * Creates a text resource.
+     *
+     * Params:
+     *   mimeType = The MIME type of the content (e.g., "text/plain")
+     *   content = The text content
+     *
+     * Returns:
+     *   A ResourceContents object with the specified text content
+     */
     static ResourceContents makeText(string mimeType, string content) {
         return ResourceContents(mimeType, content, null);
     }
     
-    /// Create binary resource
+    /**
+     * Creates a binary resource.
+     *
+     * Params:
+     *   mimeType = The MIME type of the content (e.g., "image/png")
+     *   content = The binary content as a byte array
+     *
+     * Returns:
+     *   A ResourceContents object with the specified binary content
+     */
     static ResourceContents makeBinary(string mimeType, ubyte[] content) {
         return ResourceContents(mimeType, null, content);
     }
     
-    /// Set URI (used by registry)
+    /**
+     * Sets the URI for this resource.
+     *
+     * This method is used internally by the registry to set the URI
+     * when a resource is read.
+     *
+     * Params:
+     *   uri = The URI to set
+     */
     void setURI(string uri) { _uri = uri; }
     
-    /// Convert to MCP format
+    /**
+     * Converts the resource contents to JSON format.
+     *
+     * This method generates the resource content in the format specified
+     * by the MCP protocol.
+     *
+     * Returns:
+     *   A JSONValue containing the resource's URI, MIME type, and content
+     */
     JSONValue toJSON() const {
         auto json = JSONValue([
             "uri": _uri,
@@ -64,14 +154,30 @@ struct ResourceContents {
     }
 }
 
-/// Callback for resource changes
+/**
+ * Callback function type for resource change notifications.
+ *
+ * This delegate is called when a resource is updated to notify
+ * subscribers of the change.
+ */
 alias ResourceNotifier = void delegate();
 
-/// Reader functions
+/**
+ * Function types for resource content readers.
+ *
+ * StaticResourceReader is used for resources with fixed content.
+ * DynamicResourceReader is used for resources whose content depends on the path.
+ */
 alias StaticResourceReader = ResourceContents delegate();
 alias DynamicResourceReader = ResourceContents delegate(string path);
 
-/// Resource registry
+/**
+ * Registry for managing available resources.
+ *
+ * The ResourceRegistry class provides methods for registering, retrieving,
+ * and listing resources available in the MCP server. It supports static
+ * resources, dynamic resources, and resource templates.
+ */
 class ResourceRegistry {
     private {
         struct ResourceEntry {
@@ -94,7 +200,20 @@ class ResourceRegistry {
         this.notifySubscribers = notifyCallback;
     }
     
-    /// Add static resource
+    /**
+     * Adds a static resource to the registry.
+     *
+     * Static resources have fixed content that doesn't change based on the path.
+     *
+     * Params:
+     *   uri = The URI that identifies this resource
+     *   name = Human-readable name for the resource
+     *   description = Human-readable description
+     *   reader = Function that provides the resource content
+     *
+     * Returns:
+     *   A notifier function that can be called to signal resource changes
+     */
     ResourceNotifier addResource(string uri, string name, string description,
                                StaticResourceReader reader) {
         resources ~= ResourceEntry(
@@ -120,7 +239,22 @@ class ResourceRegistry {
         return notifier;
     }
     
-    /// Add dynamic resource with base URI
+    /**
+     * Adds a dynamic resource to the registry.
+     *
+     * Dynamic resources have content that varies based on the path after the base URI.
+     * For example, a dynamic resource with base URI "resource://users/" can handle
+     * requests for "resource://users/123", "resource://users/456", etc.
+     *
+     * Params:
+     *   baseUri = The base URI prefix for this resource
+     *   name = Human-readable name for the resource
+     *   description = Human-readable description
+     *   reader = Function that provides the resource content based on the path
+     *
+     * Returns:
+     *   A notifier function that can be called to signal resource changes
+     */
     ResourceNotifier addDynamicResource(string baseUri, string name, 
                                       string description,
                                       DynamicResourceReader reader) {
@@ -154,7 +288,23 @@ class ResourceRegistry {
         return notifier;
     }
     
-    /// Add a resource template
+    /**
+     * Adds a resource template to the registry.
+     *
+     * Resource templates allow parameterized URIs with variable substitution.
+     * For example, a template with URI "resource://users/{id}" can match
+     * "resource://users/123" and extract the id parameter.
+     *
+     * Params:
+     *   uriTemplate = The URI template with parameters in {braces}
+     *   name = Human-readable name for the template
+     *   description = Human-readable description
+     *   mimeType = The MIME type of the resource
+     *   reader = Function that provides content based on extracted parameters
+     *
+     * Returns:
+     *   A notifier function that can be called to signal template changes
+     */
     ResourceNotifier addTemplate(
         string uriTemplate,
         string name,
@@ -179,7 +329,13 @@ class ResourceRegistry {
         return notifier;
     }
 
-    /// List available templates
+    /**
+     * Lists all available resource templates.
+     *
+     * Returns:
+     *   A JSONValue containing an array of template definitions
+     *   in the format specified by the MCP protocol
+     */
     JSONValue listTemplates() {
         import std.algorithm : map;
         import std.array : array;
@@ -196,7 +352,19 @@ class ResourceRegistry {
         ]);
     }
 
-    /// Extract parameters from URI using pattern matching
+    /**
+     * Extracts parameters from a URI using pattern matching.
+     *
+     * This method matches a URI against a template pattern and extracts
+     * the parameter values.
+     *
+     * Params:
+     *   uriPattern = The URI template pattern with parameters in {braces}
+     *   uri = The actual URI to match against the pattern
+     *
+     * Returns:
+     *   A string[string] map of parameter names to values, or null if no match
+     */
     private string[string] matchTemplate(string uriPattern, string uri) {
         string[string] params;
         
@@ -235,7 +403,13 @@ class ResourceRegistry {
         return params;
     }
 
-    /// List available resources
+    /**
+     * Lists all available resources.
+     *
+     * Returns:
+     *   A JSONValue containing an array of resource definitions
+     *   in the format specified by the MCP protocol
+     */
     JSONValue listResources() {
         import std.algorithm : map;
         import std.array : array;
@@ -251,7 +425,22 @@ class ResourceRegistry {
         ]);
     }
 
-    /// Read resource by URI, including template handling
+    /**
+     * Reads a resource by URI.
+     *
+     * This method handles static resources, dynamic resources, and templates.
+     * It first tries to match the URI to a static resource, then to a dynamic
+     * resource, and finally to a template.
+     *
+     * Params:
+     *   uri = The URI of the resource to read
+     *
+     * Returns:
+     *   The resource contents
+     *
+     * Throws:
+     *   ResourceNotFoundException if the resource is not found
+     */
     ResourceContents readResource(string uri) {
         // Try exact matches first
         foreach (ref entry; resources) {

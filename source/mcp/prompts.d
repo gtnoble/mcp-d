@@ -1,3 +1,37 @@
+/**
+ * Prompt system for MCP.
+ *
+ * This module provides functionality for managing prompts in the MCP server.
+ * Prompts are pre-defined message templates that can be used by AI models
+ * to generate consistent responses.
+ *
+ * The module includes:
+ * - Prompt registry for managing available prompts
+ * - Message content types (text, image, resource)
+ * - Prompt argument handling
+ * - Response formatting
+ *
+ * Example:
+ * ```d
+ * // Create a prompt registry with notification callback
+ * auto registry = new PromptRegistry((string name) {
+ *     writeln("Prompt changed: ", name);
+ * });
+ *
+ * // Define a prompt
+ * registry.addPrompt(
+ *     Prompt("greeting", "A friendly greeting", [
+ *         PromptArgument("name", "User's name", true)
+ *     ]),
+ *     (string name, string[string] args) {
+ *         return PromptResponse(
+ *             "A greeting for " ~ args["name"],
+ *             [PromptMessage.text("assistant", "Hello, " ~ args["name"] ~ "!")]
+ *         );
+ *     }
+ * );
+ * ```
+ */
 module mcp.prompts;
 
 import std.json;
@@ -5,7 +39,12 @@ import std.algorithm : map;
 import std.array : array;
 import mcp.protocol : MCPError, ErrorCode;
 
-/// Prompt argument definition
+/**
+ * Prompt argument definition.
+ *
+ * Prompt arguments define the parameters that can be passed to a prompt
+ * when it is requested.
+ */
 struct PromptArgument {
     string name;
     string description;  // Optional 
@@ -25,7 +64,12 @@ struct PromptArgument {
     }
 }
 
-/// Prompt template definition
+/**
+ * Prompt template definition.
+ *
+ * A prompt template defines a named prompt with optional description
+ * and arguments that can be used to generate content.
+ */
 struct Prompt {
     string name;
     string description;         // Optional
@@ -45,7 +89,17 @@ struct Prompt {
     }
 }
 
-/// Message content types
+/**
+ * Message content types.
+ *
+ * These structures define the different types of content that can be
+ * included in prompt messages: text, images, and resources.
+ */
+/**
+ * Text content for messages.
+ *
+ * This structure represents simple text content in a message.
+ */
 struct TextContent {
     string content;
 
@@ -57,6 +111,12 @@ struct TextContent {
     }
 }
 
+/**
+ * Image content for messages.
+ *
+ * This structure represents image content in a message,
+ * stored as base64-encoded data with a MIME type.
+ */
 struct ImageContent {
     string data;      // base64-encoded
     string mimeType;
@@ -70,6 +130,12 @@ struct ImageContent {
     }
 }
 
+/**
+ * Resource content for messages.
+ *
+ * This structure represents a reference to a resource in a message,
+ * identified by a URI and MIME type, with optional inline content.
+ */
 struct ResourceContent {
     string uri;
     string mimeType;
@@ -89,7 +155,12 @@ struct ResourceContent {
     }
 }
 
-/// Message definition with union content
+/**
+ * Message definition with union content.
+ *
+ * A PromptMessage represents a single message in a prompt response,
+ * with a role (user or assistant) and content of various types.
+ */
 struct PromptMessage {
     string role;  // "user" or "assistant"
     union {
@@ -124,7 +195,22 @@ struct PromptMessage {
         ]);
     }
 
-    // Helper constructors
+    /**
+     * Helper constructors for creating messages of different types.
+     *
+     * These static methods provide a convenient way to create messages
+     * with different content types without directly manipulating the union.
+     */
+    /**
+     * Creates a text message.
+     *
+     * Params:
+     *   role = The message role ("user" or "assistant")
+     *   content = The text content
+     *
+     * Returns:
+     *   A PromptMessage with text content
+     */
     static PromptMessage text(string role, string content) {
         PromptMessage msg;
         msg.role = role;
@@ -133,6 +219,17 @@ struct PromptMessage {
         return msg;
     }
 
+    /**
+     * Creates an image message.
+     *
+     * Params:
+     *   role = The message role ("user" or "assistant")
+     *   data = The base64-encoded image data
+     *   mimeType = The image MIME type (e.g., "image/png")
+     *
+     * Returns:
+     *   A PromptMessage with image content
+     */
     static PromptMessage image(string role, string data, string mimeType) {
         PromptMessage msg;
         msg.role = role;
@@ -141,6 +238,18 @@ struct PromptMessage {
         return msg;
     }
 
+    /**
+     * Creates a resource message.
+     *
+     * Params:
+     *   role = The message role ("user" or "assistant")
+     *   uri = The resource URI
+     *   mimeType = The resource MIME type
+     *   content = Optional inline content
+     *
+     * Returns:
+     *   A PromptMessage with resource content
+     */
     static PromptMessage resource(string role, string uri, string mimeType, string content = "") {
         PromptMessage msg;
         msg.role = role;
@@ -150,7 +259,12 @@ struct PromptMessage {
     }
 }
 
-/// Prompt response
+/**
+ * Prompt response.
+ *
+ * A PromptResponse represents the content returned when a prompt is requested,
+ * consisting of a description and an array of messages.
+ */
 struct PromptResponse {
     string description;
     PromptMessage[] messages;
@@ -163,10 +277,20 @@ struct PromptResponse {
     }
 }
 
-/// Handler for prompt content generation
+/**
+ * Handler for prompt content generation.
+ *
+ * This delegate type defines the signature for prompt handler functions,
+ * which generate prompt content based on the prompt name and arguments.
+ */
 alias PromptHandler = PromptResponse delegate(string name, string[string] arguments);
 
-/// Prompt registry
+/**
+ * Registry for managing available prompts.
+ *
+ * The PromptRegistry class provides methods for registering, retrieving,
+ * and listing prompts available in the MCP server.
+ */
 class PromptRegistry {
     private {
         struct StoredPrompt {
@@ -181,7 +305,17 @@ class PromptRegistry {
         this.notifyCallback = notifyCallback;
     }
     
-    /// Add prompt
+    /**
+     * Registers a new prompt with the registry.
+     *
+     * Params:
+     *   prompt = The prompt definition
+     *   handler = Function to generate prompt content when requested
+     *
+     * Throws:
+     *   MCPError if a prompt with the same name already exists
+     *   MCPError if the prompt name is empty
+     */
     void addPrompt(Prompt prompt, PromptHandler handler) {
         if (prompt.name.length == 0) {
             throw new MCPError(
@@ -198,7 +332,13 @@ class PromptRegistry {
         prompts[prompt.name] = StoredPrompt(prompt, handler);
     }
     
-    /// List available prompts
+    /**
+     * Lists all available prompts.
+     *
+     * Returns:
+     *   A JSONValue containing an array of prompt definitions
+     *   in the format specified by the MCP protocol
+     */
     JSONValue listPrompts() {
         return JSONValue([
             "prompts": JSONValue(prompts.values
@@ -207,7 +347,25 @@ class PromptRegistry {
         ]);
     }
     
-    /// Get prompt content
+    /**
+     * Gets the content for a specific prompt.
+     *
+     * This method retrieves a prompt by name, validates the arguments,
+     * calls the handler function, and formats the response.
+     *
+     * Params:
+     *   name = The name of the prompt to retrieve
+     *   rawArguments = The arguments to pass to the prompt handler
+     *
+     * Returns:
+     *   A JSONValue containing the prompt response in the format
+     *   specified by the MCP protocol
+     *
+     * Throws:
+     *   MCPError if the prompt does not exist
+     *   MCPError if required arguments are missing
+     *   MCPError if the response is invalid
+     */
     JSONValue getPromptContent(string name, JSONValue rawArguments) {
         auto storedPrompt = name in prompts;
         if (storedPrompt is null) {

@@ -1,9 +1,27 @@
+/**
+ * MIME type utilities for MCP.
+ *
+ * This module provides utilities for working with MIME types, including
+ * common MIME type constants, MIME type detection, and validation.
+ *
+ * The module includes:
+ * - Common MIME type constants
+ * - Functions for guessing MIME types from file extensions
+ * - Functions for checking if a MIME type represents text content
+ * - Functions for getting file extensions for MIME types
+ * - MIME type validation
+ */
 module mcp.mime;
 
 import std.path : extension;
 import std.string : toLower;
 
-/// Common MIME types
+/**
+ * Common MIME types.
+ *
+ * This enumeration defines constants for commonly used MIME types,
+ * organized by category (text, application, image, audio, video).
+ */
 enum MimeType {
     // Text
     PLAIN = "text/plain",
@@ -43,7 +61,18 @@ enum MimeType {
     BINARY = "application/octet-stream"
 }
 
-/// Guess MIME type from file extension
+/**
+ * Guesses the MIME type based on a file's extension.
+ *
+ * This function examines the file extension and returns the
+ * corresponding MIME type.
+ *
+ * Params:
+ *   path = The file path or name with extension
+ *
+ * Returns:
+ *   The MIME type as a string, or application/octet-stream if unknown
+ */
 string guessMimeType(string path) {
     auto ext = extension(path).toLower();
     switch (ext) {
@@ -89,7 +118,18 @@ string guessMimeType(string path) {
     }
 }
 
-/// Check if MIME type represents text content
+/**
+ * Checks if a MIME type represents text content.
+ *
+ * This function determines whether a MIME type represents textual
+ * content that can be read as a string.
+ *
+ * Params:
+ *   mimeType = The MIME type to check
+ *
+ * Returns:
+ *   true if the MIME type represents text content, false otherwise
+ */
 bool isTextMimeType(string mimeType) {
     import std.algorithm : startsWith, canFind;
     
@@ -111,7 +151,18 @@ bool isTextMimeType(string mimeType) {
     return textBasedTypes.canFind(mimeType);
 }
 
-/// Get file extension for MIME type
+/**
+ * Gets the file extension for a MIME type.
+ *
+ * This function returns the standard file extension associated
+ * with a given MIME type.
+ *
+ * Params:
+ *   mimeType = The MIME type
+ *
+ * Returns:
+ *   The file extension (including the dot) for the MIME type
+ */
 string getExtensionForMimeType(string mimeType) {
     switch (mimeType) {
         // Text
@@ -152,7 +203,18 @@ string getExtensionForMimeType(string mimeType) {
     }
 }
 
-/// Validate MIME type string
+/**
+ * Validates a MIME type string.
+ *
+ * This function checks if a string is a valid MIME type according
+ * to the basic format rules (type/subtype).
+ *
+ * Params:
+ *   mimeType = The MIME type string to validate
+ *
+ * Returns:
+ *   true if the MIME type is valid, false otherwise
+ */
 bool isValidMimeType(string mimeType) {
     import std.regex : matchFirst, regex;
     

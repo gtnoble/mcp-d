@@ -9,8 +9,8 @@
 *.o
 *.obj
 *.lib
-d-mcp-server
-d-mcp-server-test-library
+example
+mcp-test-library
 
 # IDEs and editors
 .idea/

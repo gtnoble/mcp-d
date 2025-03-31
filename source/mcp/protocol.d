@@ -1,14 +1,40 @@
+/**
+ * MCP protocol definitions and JSON-RPC implementation.
+ *
+ * This module provides the core protocol types and utilities for the MCP
+ * implementation, including JSON-RPC request/response handling, error codes,
+ * and protocol constants.
+ *
+ * The module includes:
+ * - Protocol version constants
+ * - JSON-RPC error codes
+ * - Request and Response structures
+ * - Error handling
+ */
 module mcp.protocol;
 
 import std.json;
 
-/// Protocol version supported by this implementation
+/**
+ * Protocol version supported by this implementation.
+ *
+ * This constant defines the MCP protocol version implemented by this library.
+ */
 const string PROTOCOL_VERSION = "2024-11-05";
 
-/// JSON-RPC version used by MCP
+/**
+ * JSON-RPC version used by MCP.
+ *
+ * This constant defines the JSON-RPC version used for message formatting.
+ */
 const string JSONRPC_VERSION = "2.0";
 
-/// Standard JSON-RPC error codes
+/**
+ * Standard JSON-RPC error codes.
+ *
+ * These error codes are defined by the JSON-RPC 2.0 specification and
+ * are used for protocol-level errors.
+ */
 enum ErrorCode {
     parseError = -32700,        // Invalid JSON
     invalidRequest = -32600,    // Not a valid request object
@@ -17,7 +43,12 @@ enum ErrorCode {
     internalError = -32603      // Internal server error
 }
 
-/// Base MCP error exception
+/**
+ * Base MCP error exception.
+ *
+ * This exception class is used for all protocol-level errors in the MCP
+ * implementation. It includes an error code, message, and optional details.
+ */
 class MCPError : Exception {
     int code;
     string details;
@@ -29,6 +60,12 @@ class MCPError : Exception {
         super(message, file, line);
     }
     
+    /**
+     * Converts the error to a JSON-RPC error response.
+     *
+     * Returns:
+     *   A JSONValue containing the error in JSON-RPC format
+     */
     JSONValue toJSON() const {
         auto error = JSONValue([
             "code": JSONValue(code),
@@ -46,7 +83,12 @@ class MCPError : Exception {
     }
 }
 
-/// JSON-RPC request
+/**
+ * JSON-RPC request structure.
+ *
+ * This structure represents a JSON-RPC request, which can be either
+ * a method call (with ID) or a notification (without ID).
+ */
 struct Request {
     string jsonrpc = JSONRPC_VERSION;  // Must be "2.0"
     string method;                      // Method to call
@@ -60,7 +102,20 @@ struct Request {
         this.id = id;
     }
     
-    /// Create from JSON
+    /**
+     * Creates a Request from a JSON value.
+     *
+     * This method parses and validates a JSON-RPC request.
+     *
+     * Params:
+     *   json = The JSON value to parse
+     *
+     * Returns:
+     *   A Request object
+     *
+     * Throws:
+     *   MCPError if the JSON is not a valid JSON-RPC request
+     */
     static Request fromJSON(JSONValue json) {
         Request req;
         
@@ -101,7 +156,12 @@ struct Request {
         return req;
     }
     
-    /// Convert to JSON
+    /**
+     * Converts the request to JSON format.
+     *
+     * Returns:
+     *   A JSONValue containing the request in JSON-RPC format
+     */
     JSONValue toJSON() const {
         auto json = JSONValue([
             "jsonrpc": JSONValue(JSONRPC_VERSION),
@@ -119,20 +179,42 @@ struct Request {
         return json;
     }
     
-    /// Returns true if this is a notification (no ID)
+    /**
+     * Checks if this request is a notification.
+     *
+     * Notifications are requests without an ID, which do not
+     * require a response.
+     *
+     * Returns:
+     *   true if this is a notification, false otherwise
+     */
     bool isNotification() const {
         return id.type == JSONType.null_;
     }
 }
 
-/// JSON-RPC response
+/**
+ * JSON-RPC response structure.
+ *
+ * This structure represents a JSON-RPC response, which can be either
+ * a success response (with result) or an error response (with error).
+ */
 struct Response {
     string jsonrpc = JSONRPC_VERSION;  // Must be "2.0"
     JSONValue id;                      // Request ID
     JSONValue result;                  // Result (exclusive with errorValue)
     JSONValue errorValue;              // Error (exclusive with result)
     
-    /// Create success response
+    /**
+     * Creates a success response.
+     *
+     * Params:
+     *   id = The request ID
+     *   result = The result value
+     *
+     * Returns:
+     *   A Response object with the result
+     */
     static Response success(JSONValue id, JSONValue result) {
         Response resp;
         resp.id = id;
@@ -140,7 +222,18 @@ struct Response {
         return resp;
     }
     
-    /// Create error response
+    /**
+     * Creates an error response.
+     *
+     * Params:
+     *   id = The request ID
+     *   code = The error code
+     *   message = The error message
+     *   details = Optional error details
+     *
+     * Returns:
+     *   A Response object with the error
+     */
     static Response makeError(JSONValue id, int code, 
                             string message, string details = null) {
         Response resp;
@@ -155,7 +248,12 @@ struct Response {
         return resp;
     }
     
-    /// Convert to JSON
+    /**
+     * Converts the response to JSON format.
+     *
+     * Returns:
+     *   A JSONValue containing the response in JSON-RPC format
+     */
     JSONValue toJSON() const {
         JSONValue[string] json = [
             "jsonrpc": JSONValue(JSONRPC_VERSION),
