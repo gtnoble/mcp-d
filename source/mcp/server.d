@@ -121,6 +121,28 @@ class MCPServer {
     }
     
     /**
+     * Executes a registered tool by name with provided arguments.
+     *
+     * This method provides direct access to tool execution without going through
+     * the JSON-RPC protocol layer.
+     *
+     * Params:
+     *   name = The name of the tool to execute
+     *   arguments = The arguments to pass to the tool
+     *
+     * Returns:
+     *   The tool's execution result as a JSONValue
+     *
+     * Throws:
+     *   MCPError if the tool does not exist
+     *   ToolExecutionError if arguments are invalid
+     */
+    JSONValue executeTool(string name, JSONValue arguments) {
+        auto tool = toolRegistry.getTool(name);
+        return tool.execute(arguments);
+    }
+    
+    /**
      * Registers a tool with the server.
      *
      * Tools provide functionality that can be invoked by AI models.
