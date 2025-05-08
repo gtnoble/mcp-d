@@ -463,7 +463,7 @@ class SchemaBuilder {
     static SchemaBuilder enum_(string[] values...) {
         auto builder = new SchemaBuilder();
         builder.type = SchemaType.enum_;
-        builder.enumValues = values;
+        builder.enumValues = values.dup;
         return builder;
     }
 
