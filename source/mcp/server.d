@@ -38,7 +38,8 @@ import mcp.schema;
 import mcp.tools;
 import mcp.resources;
 import mcp.prompts;
-import mcp.transport.stdio;
+import mcp.transport.base : Transport;
+import mcp.transport.stdio : createStdioTransport;
 
 /**
  * MCP server implementation.
