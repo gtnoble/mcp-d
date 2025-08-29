@@ -5,6 +5,9 @@
     "copyright": "Copyright © 2025",
     "license": "MIT",
     "targetType": "library",
+    "dependencies": {
+        "vibe-d:http": "~>0.10.0"
+    },
     "configurations": [
         {
             "name": "library",

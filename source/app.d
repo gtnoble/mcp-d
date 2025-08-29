@@ -18,11 +18,13 @@ import std.stdio;
 import std.conv : to;
 import std.json;
 import std.base64;
+import std.getopt;
 
 import mcp.server;
 import mcp.schema;
 import mcp.resources : ResourceContents;
 import mcp.prompts;
+import mcp.transport.http : createHttpTransport;
 
 // Create shared state for resources
 __gshared {
@@ -38,19 +40,19 @@ version(unittest) {} else
  * This function creates and configures an MCP server with example
  * tools, prompts, and resources, then starts it.
  */
-void main() {
-    /**
-     * Create a new MCP server with a custom name and version.
-     *
-     * This constructor uses the default stdio transport, which reads
-     * from stdin and writes to stdout. This is the standard transport
-     * for MCP servers.
-     *
-     * The server name and version are reported to clients during
-     * initialization.
-     */
-    // Initialize server
-    auto server = new MCPServer("Example MCP Server", "0.1.0");
+void main(string[] args) {
+    string transportType = "stdio";
+    string host = "127.0.0.1";
+    ushort port = 8080;
+    getopt(args, "transport", &transportType, "host", &host, "port", &port);
+
+    MCPServer server;
+    if (transportType == "http") {
+        auto transport = createHttpTransport(host, port);
+        server = new MCPServer(transport, "Example MCP Server", "0.1.0");
+    } else {
+        server = new MCPServer("Example MCP Server", "0.1.0");
+    }
 
     /**
      * Example 1: Simple calculator tool with numeric validation

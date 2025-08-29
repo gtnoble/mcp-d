@@ -1,7 +1,7 @@
 module mcp.server_test;
 
 import mcp.server;
-import mcp.transport.stdio : Transport;
+import mcp.transport.base : Transport;
 import mcp.protocol : ErrorCode;
 import mcp.resources;
 import mcp.prompts;

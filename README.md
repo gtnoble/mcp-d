@@ -6,6 +6,7 @@ A D language implementation of the Model Context Protocol (MCP) server, focusing
 
 - MCP protocol v2024-11-05 support
 - stdio transport implementation
+- HTTP transport with Server-Sent Events support
 - Type-safe schema builder for tool parameters
 - Resource system with static, dynamic, and template resources
 - Prompt system with text, image, and resource content
@@ -248,6 +249,8 @@ The library implements the MCP specification v2024-11-05:
 The library uses stdio transport by default, but you can implement custom transports:
 
 ```d
+import mcp.transport.base : Transport;
+
 class MyCustomTransport : Transport {
     // Implement the Transport interface methods
     void setMessageHandler(void delegate(JSONValue) handler) { ... }
@@ -260,6 +263,28 @@ class MyCustomTransport : Transport {
 // Use custom transport
 auto transport = new MyCustomTransport();
 auto server = new MCPServer(transport, "My Server", "1.0.0");
+```
+
+## HTTP Transport
+
+The example application can expose the server over HTTP using Server-Sent Events for notifications. Run the server:
+
+```
+dub run :example -- --transport=http --host=127.0.0.1 --port=8080
+```
+
+Send a request:
+
+```
+curl -X POST http://localhost:8080/mcp \
+     -H 'Content-Type: application/json' \
+     -d '{"jsonrpc":"2.0","id":1,"method":"ping"}'
+```
+
+Listen for notifications and responses:
+
+```
+curl http://localhost:8080/events
 ```
 
 ## Building

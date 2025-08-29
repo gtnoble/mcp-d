@@ -32,20 +32,7 @@ import std.json;
 import std.string : strip;
 
 import mcp.protocol;
-
-/**
- * Transport interface for MCP communication.
- *
- * This interface defines the methods required for any transport
- * implementation in the MCP system.
- */
-interface Transport {
-    void setMessageHandler(void delegate(JSONValue) handler);
-    void handleMessage(JSONValue message);
-    void sendMessage(JSONValue message);
-    void run();
-    void close();
-}
+import mcp.transport.base : Transport;
 
 /**
  * Standard I/O transport implementation.
