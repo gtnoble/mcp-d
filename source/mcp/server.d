@@ -262,6 +262,18 @@ class MCPServer {
     void start() {
         transport.run();
     }
+
+    /**
+     * Requests the server to stop processing and shut down its transport.
+     *
+     * This is a thin wrapper that forwards to the underlying transport's
+     * close() method to break out of any blocking loops and stop cleanly.
+     */
+    void stop() {
+        if (transport !is null) {
+            transport.close();
+        }
+    }
     
     /**
      * Handles an incoming message from the transport.

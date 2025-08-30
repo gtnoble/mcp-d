@@ -26,6 +26,34 @@ import mcp.resources : ResourceContents;
 import mcp.prompts;
 import mcp.transport.http : createHttpTransport;
 
+// OS signal handling for graceful shutdown
+version(Posix) {
+    import core.sys.posix.signal;
+    __gshared sig_atomic_t gStop = 0;
+    extern(C) nothrow @nogc void mcpOnSignal(int) { gStop = 1; }
+    void setupSignals() {
+        sigaction_t sa; sa.sa_handler = &mcpOnSignal; sigemptyset(&sa.sa_mask); sa.sa_flags = 0; // do not restart readln
+        sigaction(SIGINT, &sa, null);
+        sigaction(SIGTERM, &sa, null);
+    }
+}
+version(Windows) {
+    import core.sys.windows.windows : BOOL, DWORD, TRUE, SetConsoleCtrlHandler;
+    __gshared bool gStopWin = false;
+    extern(Windows) nothrow @nogc BOOL onConsoleCtrl(DWORD) { gStopWin = true; return TRUE; }
+    void setupSignals() { SetConsoleCtrlHandler(&onConsoleCtrl, TRUE); }
+}
+import core.thread : Thread;
+import core.time : msecs;
+// Stop-check helper across platforms
+private bool shouldStop()
+{
+    bool stop = false;
+    version(Posix) stop = cast(bool)gStop;
+    version(Windows) stop = gStopWin;
+    return stop;
+}
+
 // Create shared state for resources
 __gshared {
     int counter = 0;
@@ -52,6 +80,26 @@ void main(string[] args) {
         server = new MCPServer(transport, "Example MCP Server", "0.1.0");
     } else {
         server = new MCPServer("Example MCP Server", "0.1.0");
+    }
+
+    // Setup OS signal handlers and start a watcher thread to stop the server
+    version(Posix) {
+        setupSignals();
+        auto sigWatcher = new Thread({
+            while (!cast(bool)gStop) Thread.sleep(50.msecs);
+            server.stop();
+        });
+        sigWatcher.isDaemon = true; // do not block process exit if vibe handles signals
+        sigWatcher.start();
+    }
+    version(Windows) {
+        setupSignals();
+        auto sigWatcher = new Thread({
+            while (!gStopWin) Thread.sleep(50.msecs);
+            server.stop();
+        });
+        sigWatcher.isDaemon = true; // do not block process exit
+        sigWatcher.start();
     }
 
     /**
@@ -361,16 +409,18 @@ void main(string[] args) {
         }
     );
 
-    // Start update thread
-    new Thread({
-        while (true) {
+    // Start update thread (daemon) and stop on signal
+    auto updater = new Thread({
+        while (!shouldStop()) {
             if (lastUpdateTime == 0) {
                 lastUpdateTime = Clock.currTime().toUnixTime();
             }
             notifyStatusChanged(); // Trigger notification
             Thread.sleep(5.seconds);
         }
-    }).start();
+    });
+    updater.isDaemon = true; // do not block process exit
+    updater.start();
 
     
     /**

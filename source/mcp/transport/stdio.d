@@ -30,10 +30,13 @@ module mcp.transport.stdio;
 import std.stdio;
 import std.json;
 import std.string : strip;
+import std.exception : ErrnoException;
+version(Posix) import core.stdc.errno : EINTR;
 
 import mcp.protocol;
 import mcp.transport.base : Transport;
 
+// duplicate imports removed
 /**
  * Standard I/O transport implementation.
  *
@@ -130,8 +133,22 @@ class StdioTransport : Transport {
                 // Handle message
                 handleMessage(message);
             }
+            catch (ErrnoException e) {
+                version(Posix) if (e.errno == EINTR) break;
+                if (closed || input.eof) break;
+                auto response = Response.makeError(
+                    JSONValue(null),
+                    ErrorCode.internalError,
+                    "Internal error: " ~ e.msg
+                );
+                sendMessage(response.toJSON());
+            }
             catch (Exception e) {
-                // Send internal error
+                // If we're closing or hit EOF, break the loop
+                if (closed || input.eof) {
+                    break;
+                }
+                // Otherwise report internal error and continue
                 auto response = Response.makeError(
                     JSONValue(null),
                     ErrorCode.internalError,
