@@ -69,6 +69,17 @@ version(unittest) {} else
  * tools, prompts, and resources, then starts it.
  */
 void main(string[] args) {
+    /**
+     * Create a new MCP server with a custom name and version.
+     *
+     * This constructor uses the default stdio transport, which reads
+     * from stdin and writes to stdout. This is the standard transport
+     * for MCP servers.
+     * If transportType is specified, httptransport is created and used instead.
+     *
+     * The server name and version are reported to clients during
+     * initialization.
+     */
     string transportType = "stdio";
     string host = "127.0.0.1";
     ushort port = 8080;
