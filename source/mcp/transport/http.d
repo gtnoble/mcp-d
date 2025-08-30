@@ -28,6 +28,7 @@ class HttpTransport : Transport {
         string host;
         ushort port;
         bool running;
+        bool shouldExit; // close() called before or during run()
     }
     
     // Run on the event loop to stop listening and exit cleanly
@@ -108,10 +109,21 @@ class HttpTransport : Transport {
     }
 
     private void handleEvents(scope HTTPServerRequest req, scope HTTPServerResponse res) {
+        import core.time : seconds;
+        import vibe.core.core : sleep;
+
         res.headers["Content-Type"] = "text/event-stream";
         res.headers["Cache-Control"] = "no-cache";
         res.headers["Connection"] = "keep-alive";
         auto stream = res.bodyWriter;
+
+        // Immediately send an SSE prelude so clients and proxies flush headers
+        // and the client knows the stream is open.
+        try {
+            stream.write(":\n\n"); // comment per SSE spec
+            stream.flush();
+        } catch (Exception) {}
+
         synchronized(this) clients ~= stream;
         scope(exit) synchronized(this) {
             // remove stream from clients if still present
@@ -121,8 +133,21 @@ class HttpTransport : Transport {
             }
             if (idx != size_t.max) clients = clients[0 .. idx] ~ clients[idx + 1 .. $];
         }
+        // Keep the handler alive and send a heartbeat every ~15s to prevent
+        // idle proxies from closing the connection.
+        int counter = 0;
         while (running) {
-            yield();
+            sleep(5.seconds);
+            ++counter;
+            if (!running) break;
+            if ((counter % 3) == 0) {
+                try {
+                    stream.write(": heartbeat\n\n");
+                    stream.flush();
+                } catch (Exception) {
+                    break; // client went away
+                }
+            }
         }
     }
 
@@ -136,11 +161,19 @@ class HttpTransport : Transport {
         listener = listenHTTP(settings, router);
         running = true;
         scope(exit) performStopListening();
+
+        // If close() was called before the event loop starts, exit early.
+        if (shouldExit) {
+            running = false;
+            return;
+        }
         string[] unrecognized;
         runApplication(&unrecognized);
     }
 
     void close() {
+        // Mark for early exit and stop accepting new connections ASAP
+        shouldExit = true;
         running = false;
         // Proactively close any connected SSE clients to release handles
         synchronized (this) {
@@ -152,6 +185,8 @@ class HttpTransport : Transport {
             }
             clients.length = 0;
         }
+        // Stop listener immediately even if event loop is not running yet
+        performStopListening();
         // Stop listener and exit event loop on the event loop thread
         runTask(&performShutdown);
     }
