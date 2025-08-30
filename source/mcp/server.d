@@ -281,8 +281,8 @@ class MCPServer {
                 JSONValue response;
                 
                 try {
-                    // Check initialization
-                    if (!initialized && request.method != "initialize") {
+                    // Check initialization (allow ping pre-initialize)
+                    if (!initialized && request.method != "initialize" && request.method != "ping") {
                         throw new MCPError(
                             ErrorCode.invalidRequest,
                             "Server not initialized"

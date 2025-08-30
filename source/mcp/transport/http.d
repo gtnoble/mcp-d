@@ -11,17 +11,19 @@ import std.json;
 
 import vibe.http.server;
 import vibe.http.router;
-import vibe.core.core : runEventLoop, exitEventLoop, yield, Fiber;
+import vibe.core.core : runApplication, exitEventLoop, yield;
+import core.thread.fiber : Fiber;
 import vibe.core.stream : OutputStream;
-import std.algorithm : countUntil;
+import vibe.stream.operations : readAllUTF8;
+import vibe.internal.interfaceproxy : InterfaceProxy;
 
 import mcp.transport.base;
 
 class HttpTransport : Transport {
     private {
         void delegate(JSONValue) messageHandler;
-        HTTPServerListener listener;
-        OutputStream[] clients;
+        HTTPListener listener;
+        InterfaceProxy!OutputStream[] clients;
         JSONValue*[Fiber] responseSlots;
         string host;
         ushort port;
@@ -51,7 +53,6 @@ class HttpTransport : Transport {
             size_t i = 0;
             while (i < clients.length) {
                 auto c = clients[i];
-                scope(exit) {}
                 try {
                     c.write("data: " ~ message.toString() ~ "\n\n");
                     c.flush();
@@ -64,8 +65,7 @@ class HttpTransport : Transport {
     }
 
     private void handlePost(scope HTTPServerRequest req, scope HTTPServerResponse res) {
-        import std.conv : to;
-        auto body = cast(string)req.bodyReader.readAll().idup;
+        auto body = req.bodyReader.readAllUTF8();
         JSONValue msg;
         try {
             msg = parseJSON(body);
@@ -82,19 +82,18 @@ class HttpTransport : Transport {
             return;
         }
 
-        JSONValue response;
+        auto responsePtr = new JSONValue; // heap-allocated to avoid @safe address-of local
         auto fb = Fiber.getThis();
-        synchronized(this) responseSlots[fb] = &response;
+        synchronized(this) responseSlots[fb] = responsePtr;
         handleMessage(msg);
         synchronized(this) responseSlots.remove(fb);
 
         res.headers["Content-Type"] = "application/json";
-        auto idField = msg["id"];
-        if (idField.type == JSON_TYPE.NULL){
+        if (!("id" in msg) || msg["id"].type == JSONType.null_) {
             res.statusCode = 204;
             res.writeBody("");
         } else {
-            res.writeBody(response.toString());
+            res.writeBody(responsePtr.toString());
         }
     }
 
@@ -105,10 +104,14 @@ class HttpTransport : Transport {
         auto stream = res.bodyWriter;
         synchronized(this) clients ~= stream;
         scope(exit) synchronized(this) {
-            auto idx = clients.countUntil(stream);
-            if (idx != -1) clients = clients[0 .. idx] ~ clients[idx + 1 .. $];
+            // remove stream from clients if still present
+            size_t idx = size_t.max;
+            foreach (i, s; clients) {
+                if (s is stream) { idx = i; break; }
+            }
+            if (idx != size_t.max) clients = clients[0 .. idx] ~ clients[idx + 1 .. $];
         }
-        while (running && stream.isOpen) {
+        while (running) {
             yield();
         }
     }
@@ -118,17 +121,17 @@ class HttpTransport : Transport {
         router.post("/mcp", &handlePost);
         router.get("/events", &handleEvents);
         auto settings = new HTTPServerSettings;
-        settings.host = host;
         settings.port = port;
+        settings.bindAddresses = [host];
         listener = listenHTTP(settings, router);
         running = true;
-        runEventLoop();
+        string[] unrecognized;
+        runApplication(&unrecognized);
     }
 
     void close() {
         running = false;
-        if (listener !is null) listener.stopListening();
-        synchronized(this) foreach (c; clients) { c.close(); }
+        listener.stopListening();
         exitEventLoop();
     }
 }

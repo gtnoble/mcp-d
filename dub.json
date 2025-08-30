@@ -18,7 +18,14 @@
             "targetName": "example",
             "targetType": "executable",
             "sourceFiles": ["source/app.d"],
-            "mainSourceFile": "source/app.d"
+            "mainSourceFile": "source/app.d",
+            "excludedSourceFiles": [
+                "source/mcp/transport/http_test.d",
+                "source/mcp/prompts_test.d",
+                "source/mcp/resources_test.d",
+                "source/mcp/schema_test.d",
+                "source/mcp/server_test.d"
+            ]
         }
     ]
 }

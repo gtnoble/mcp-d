@@ -267,24 +267,75 @@ auto server = new MCPServer(transport, "My Server", "1.0.0");
 
 ## HTTP Transport
 
-The example application can expose the server over HTTP using Server-Sent Events for notifications. Run the server:
+The example application can expose the server over HTTP using Server-Sent Events (SSE) for responses and notifications.
+
+- Start server: `dub run -c example -- --transport=http --host=127.0.0.1 --port=8080`
+
+Then use this JSON-RPC flow (ping works without initialize; others require initialize):
+
+1) Initialize
 
 ```
-dub run :example -- --transport=http --host=127.0.0.1 --port=8080
+curl -sS -X POST http://127.0.0.1:8080/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "jsonrpc":"2.0",
+        "id":1,
+        "method":"initialize",
+        "params":{
+          "protocolVersion":"2024-11-05",
+          "clientInfo":{"name":"curl","version":"0.1"},
+          "capabilities":{}
+        }
+      }'
 ```
 
-Send a request:
+2) Notify initialized (optional, as a notification without id)
 
 ```
-curl -X POST http://localhost:8080/mcp \
-     -H 'Content-Type: application/json' \
-     -d '{"jsonrpc":"2.0","id":1,"method":"ping"}'
+curl -sS -X POST http://127.0.0.1:8080/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","method":"notifications/initialized","params":{}}'
 ```
 
-Listen for notifications and responses:
+3) Now you can call methods, e.g. ping (also works pre-initialize)
 
 ```
-curl http://localhost:8080/events
+curl -sS -X POST http://127.0.0.1:8080/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":2,"method":"ping"}'
+```
+
+More examples:
+
+- List tools
+
+```
+curl -sS -X POST http://127.0.0.1:8080/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":3,"method":"tools/list"}'
+```
+
+- Call the sample `add` tool
+
+```
+curl -sS -X POST http://127.0.0.1:8080/mcp \
+  -H 'Content-Type: application/json' \
+  -d '{
+        "jsonrpc":"2.0",
+        "id":4,
+        "method":"tools/call",
+        "params":{
+          "name":"add",
+          "arguments":{"a":3,"b":5}
+        }
+      }'
+```
+
+Listen for SSE notifications and responses:
+
+```
+curl http://127.0.0.1:8080/events
 ```
 
 ## Building
@@ -294,7 +345,10 @@ curl http://localhost:8080/events
 dub build
 
 # Run example
-dub run
+dub run -c example
+
+# Run example (HTTP transport)
+dub run -c example -- --transport=http --host=127.0.0.1 --port=8080
 
 # Run tests
 dub test
