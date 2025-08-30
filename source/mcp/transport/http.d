@@ -11,7 +11,7 @@ import std.json;
 
 import vibe.http.server;
 import vibe.http.router;
-import vibe.core.core : runApplication, exitEventLoop, yield;
+import vibe.core.core : runApplication, exitEventLoop, yield, runTask;
 import core.thread.fiber : Fiber;
 import vibe.core.stream : OutputStream;
 import vibe.stream.operations : readAllUTF8;
@@ -28,6 +28,16 @@ class HttpTransport : Transport {
         string host;
         ushort port;
         bool running;
+    }
+    
+    // Run on the event loop to stop listening and exit cleanly
+    private void performShutdown() nothrow @system {
+        try { listener.stopListening(); } catch (Exception) {}
+        try { exitEventLoop(); } catch (Exception) {}
+    }
+    // Stop listening without touching the event loop state (safe after loop exit)
+    private void performStopListening() nothrow @system {
+        try { listener.stopListening(); } catch (Exception) {}
     }
 
     this(string host = "127.0.0.1", ushort port = 8080) {
@@ -125,14 +135,25 @@ class HttpTransport : Transport {
         settings.bindAddresses = [host];
         listener = listenHTTP(settings, router);
         running = true;
+        scope(exit) performStopListening();
         string[] unrecognized;
         runApplication(&unrecognized);
     }
 
     void close() {
         running = false;
-        listener.stopListening();
-        exitEventLoop();
+        // Proactively close any connected SSE clients to release handles
+        synchronized (this) {
+            size_t i = 0;
+            while (i < clients.length) {
+                auto c = clients[i];
+                try { c.write("event: shutdown\n\n"); c.flush(); } catch (Exception) {}
+                ++i;
+            }
+            clients.length = 0;
+        }
+        // Stop listener and exit event loop on the event loop thread
+        runTask(&performShutdown);
     }
 }
 
