@@ -31,15 +31,6 @@ class HttpTransport : Transport {
         bool shouldExit; // close() called before or during run()
     }
     
-    // Run on the event loop to stop listening and exit cleanly
-    private void performShutdown() nothrow @system {
-        try { listener.stopListening(); } catch (Exception) {}
-        try { exitEventLoop(); } catch (Exception) {}
-    }
-    // Stop listening without touching the event loop state (safe after loop exit)
-    private void performStopListening() nothrow @system {
-        try { listener.stopListening(); } catch (Exception) {}
-    }
 
     this(string host = "127.0.0.1", ushort port = 8080) {
         this.host = host;
@@ -160,7 +151,9 @@ class HttpTransport : Transport {
         settings.bindAddresses = [host];
         listener = listenHTTP(settings, router);
         running = true;
-        scope(exit) performStopListening();
+        scope(exit) {
+            listener.stopListening();
+        }
 
         // If close() was called before the event loop starts, exit early.
         if (shouldExit) {
@@ -185,10 +178,8 @@ class HttpTransport : Transport {
             }
             clients.length = 0;
         }
-        // Stop listener immediately even if event loop is not running yet
-        performStopListening();
-        // Stop listener and exit event loop on the event loop thread
-        runTask(&performShutdown);
+
+        listener.stopListening();
     }
 }
 

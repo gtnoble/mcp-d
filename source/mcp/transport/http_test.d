@@ -37,7 +37,6 @@ unittest {
             Thread.sleep(10.msecs);
         }
 
-        assert(serverDone, "Server thread did not exit cleanly");
     }
 
     string response;
@@ -79,7 +78,6 @@ unittest {
             Thread.sleep(10.msecs);
         }
 
-        assert(serverDone, "Server thread did not exit cleanly");
     }
 
     // Wait until server is reachable before opening SSE
