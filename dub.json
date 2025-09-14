@@ -14,6 +14,10 @@
             "targetType": "library"
         },
         {
+            "name": "unittest",
+            "sourceFiles": ["source/mcp/transport/http_test.d", "source/mcp/prompts_test.d", "source/mcp/resources_test.d", "source/mcp/schema_test.d", "source/mcp/server_test.d"]
+        },
+        {
             "name": "example",
             "targetName": "example",
             "targetType": "executable",
