@@ -36,7 +36,8 @@ unittest {
             if (atomicLoad(serverDone)) break;
             Thread.sleep(10.msecs);
         }
-        // Do not join here to avoid blocking
+
+        assert(serverDone, "Server thread did not exit cleanly");
     }
 
     string response;
@@ -77,7 +78,8 @@ unittest {
             if (atomicLoad(serverDone)) break;
             Thread.sleep(10.msecs);
         }
-        // Do not join here to avoid blocking
+
+        assert(serverDone, "Server thread did not exit cleanly");
     }
 
     // Wait until server is reachable before opening SSE
